@@ -81,16 +81,6 @@ static unsigned int defaultcs = 256;
 static unsigned int defaultitalic = 11;
 static unsigned int defaultunderline = 7;
 
-/* Internal keyboard shortcuts. */
-#define MODKEY Mod1Mask
-
-static Shortcut shortcuts[] = {
-	/* modifier		key		function	argument */
-	{ MODKEY|ShiftMask,	XK_Prior,	xzoom,		{.i = +1} },
-	{ MODKEY|ShiftMask,	XK_Next,	xzoom,		{.i = -1} },
-	{ MODKEY,		XK_Num_Lock,	numlock,	{.i =  0} },
-};
-
 /*
  * Special keys (change & recompile st.info accordingly)
  *

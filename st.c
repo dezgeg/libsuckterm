@@ -219,7 +219,6 @@ typedef struct {
 	char trantbl[4]; /* charset table translation */
 	int charset;  /* current charset */
 	int icharset; /* selected charset for sequence */
-	bool numlock; /* lock numbers in keyboard */
 	bool *tabs;
 } Term;
 
@@ -254,24 +253,6 @@ typedef struct {
 	signed char appcursor; /* application cursor */
 	signed char crlf;      /* crlf mode          */
 } Key;
-
-typedef union {
-	int i;
-	unsigned int ui;
-	float f;
-	const void *v;
-} Arg;
-
-typedef struct {
-	unsigned int mod;
-	KeySym keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Shortcut;
-
-/* function definitions used in config.h */
-static void numlock(const Arg *);
-static void xzoom(const Arg *);
 
 /* Config.h for applying patches and the configuration. */
 #include "config.h"
@@ -364,8 +345,6 @@ static void xresettitle(void);
 static void xsetpointermotion(int);
 static void xseturgency(int);
 static void xtermclear(int, int, int, int);
-static void xunloadfont(Font *f);
-static void xunloadfonts(void);
 static void xresize(int, int);
 
 static void expose(XEvent *);
@@ -790,7 +769,6 @@ void
 tnew(int col, int row) {
 	term = (Term){ .c = { .attr = { .fg = defaultfg, .bg = defaultbg } } };
 	tresize(col, row);
-	term.numlock = 1;
 
 	treset();
 }
@@ -2245,38 +2223,6 @@ xloadfontset(Font *f) {
 }
 
 void
-xunloadfont(Font *f) {
-	XftFontClose(xw.dpy, f->match);
-	FcPatternDestroy(f->pattern);
-	if(f->set)
-		FcFontSetDestroy(f->set);
-}
-
-void
-xunloadfonts(void) {
-	int i;
-
-	/* Free the loaded fonts in the font cache.  */
-	for(i = 0; i < frclen; i++) {
-		XftFontClose(xw.dpy, frc[i].font);
-	}
-	frclen = 0;
-
-	xunloadfont(&dc.font);
-	xunloadfont(&dc.bfont);
-	xunloadfont(&dc.ifont);
-	xunloadfont(&dc.ibfont);
-}
-
-void
-xzoom(const Arg *arg) {
-	xunloadfonts();
-	xloadfonts(usedfont, usedfontsize + arg->i);
-	cresize(0, 0);
-	redraw(0);
-}
-
-void
 xinit(void) {
 	XGCValues gcvalues;
 	Cursor cursor;
@@ -2856,11 +2802,6 @@ match(uint mask, uint state) {
 	return state == mask;
 }
 
-void
-numlock(const Arg *dummy) {
-	term.numlock ^= 1;
-}
-
 char*
 kmap(KeySym k, uint state) {
 	Key *kp;
@@ -2885,8 +2826,6 @@ kmap(KeySym k, uint state) {
 
 		if(kp->appkey > 0) {
 			if(!IS_SET(MODE_APPKEYPAD))
-				continue;
-			if(term.numlock && kp->appkey == 2)
 				continue;
 		} else if(kp->appkey < 0 && IS_SET(MODE_APPKEYPAD)) {
 			continue;
@@ -2917,20 +2856,12 @@ kpress(XEvent *ev) {
 	int len;
 	long c;
 	Status status;
-	Shortcut *bp;
 
 	if(IS_SET(MODE_KBDLOCK))
 		return;
 
 	len = XmbLookupString(xw.xic, e, buf, sizeof buf, &ksym, &status);
 	e->state &= ~Mod2Mask;
-	/* 1. shortcuts */
-	for(bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
-		if(ksym == bp->keysym && match(bp->mod, e->state)) {
-			bp->func(&(bp->arg));
-			return;
-		}
-	}
 
 	/* 2. custom keys from config.h */
 	if((customkey = kmap(ksym, e->state))) {
