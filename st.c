@@ -3043,8 +3043,6 @@ usage(void) {
 
 int
 main(int argc, char *argv[]) {
-	int bitm, xr, yr;
-	uint wr, hr;
 	char *titles;
 
 	xw.fw = xw.fh = xw.fx = xw.fy = 0;
@@ -3069,24 +3067,6 @@ main(int argc, char *argv[]) {
 		goto run;
 	case 'f':
 		opt_font = EARGF(usage());
-		break;
-	case 'g':
-		bitm = XParseGeometry(EARGF(usage()), &xr, &yr, &wr, &hr);
-		if(bitm & XValue)
-			xw.fx = xr;
-		if(bitm & YValue)
-			xw.fy = yr;
-		if(bitm & WidthValue)
-			xw.fw = (int)wr;
-		if(bitm & HeightValue)
-			xw.fh = (int)hr;
-		if(bitm & XNegative && xw.fx == 0)
-			xw.fx = -1;
-		if(bitm & YNegative && xw.fy == 0)
-			xw.fy = -1;
-
-		if(xw.fh != 0 && xw.fw != 0)
-			xw.isfixed = True;
 		break;
 	case 'o':
 		opt_io = EARGF(usage());
