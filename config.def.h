@@ -13,17 +13,6 @@ static char shell[] = "/bin/sh";
 float cwscale = 1.0;
 float chscale = 1.0;
 
-/*
- * word delimiter string
- *
- * More advanced example: " `'\"()[]{}"
- */
-static char worddelimiters[] = " ";
-
-/* selection timeouts (in milliseconds) */
-static unsigned int doubleclicktimeout = 300;
-static unsigned int tripleclicktimeout = 600;
-
 /* alt screens */
 static bool allowaltscreen = true;
 
@@ -47,7 +36,6 @@ static int bellvolume = 0;
 static char termname[] = "st-256color";
 
 static unsigned int tabspaces = 8;
-
 
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
@@ -77,7 +65,6 @@ static const char *colorname[] = {
 	"#cccccc",
 };
 
-
 /*
  * Default colors (colorname index)
  * foreground, background, cursor
@@ -94,14 +81,6 @@ static unsigned int defaultcs = 256;
 static unsigned int defaultitalic = 11;
 static unsigned int defaultunderline = 7;
 
-/* Internal mouse shortcuts. */
-/* Beware that overloading Button1 will disable the selection. */
-static Mousekey mshortcuts[] = {
-	/* keysym		mask		string */
-	{ Button4,		XK_ANY_MOD,	"\031"},
-	{ Button5,		XK_ANY_MOD,	"\005"},
-};
-
 /* Internal keyboard shortcuts. */
 #define MODKEY Mod1Mask
 
@@ -109,8 +88,6 @@ static Shortcut shortcuts[] = {
 	/* modifier		key		function	argument */
 	{ MODKEY|ShiftMask,	XK_Prior,	xzoom,		{.i = +1} },
 	{ MODKEY|ShiftMask,	XK_Next,	xzoom,		{.i = -1} },
-	{ ShiftMask,		XK_Insert,	selpaste,	{.i =  0} },
-	{ MODKEY|ShiftMask,	XK_Insert,	clippaste,	{.i =  0} },
 	{ MODKEY,		XK_Num_Lock,	numlock,	{.i =  0} },
 };
 
@@ -348,16 +325,3 @@ static Key key[] = {
 	{ XK_F34,           XK_NO_MOD,      "\033[21;5~",    0,    0,    0},
 	{ XK_F35,           XK_NO_MOD,      "\033[23;5~",    0,    0,    0},
 };
-
-/*
- * Selection types' masks.
- * Use the same masks as usual.
- * Button1Mask is always unset, to make masks match between ButtonPress.
- * ButtonRelease and MotionNotify.
- * If no match is found, regular selection is used.
- */
-
-static uint selmasks[] = {
-	[SEL_RECTANGULAR] = Mod1Mask,
-};
-

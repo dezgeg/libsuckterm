@@ -162,16 +162,6 @@ enum window_state {
 	WIN_FOCUSED = 4
 };
 
-enum selection_type {
-	SEL_REGULAR = 1,
-	SEL_RECTANGULAR = 2
-};
-
-enum selection_snap {
-	SNAP_WORD = 1,
-	SNAP_LINE = 2
-};
-
 typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned long ulong;
@@ -256,12 +246,6 @@ typedef struct {
 } XWindow;
 
 typedef struct {
-	uint b;
-	uint mask;
-	char *s;
-} Mousekey;
-
-typedef struct {
 	KeySym k;
 	uint mask;
 	char *s;
@@ -270,28 +254,6 @@ typedef struct {
 	signed char appcursor; /* application cursor */
 	signed char crlf;      /* crlf mode          */
 } Key;
-
-typedef struct {
-	int mode;
-	int type;
-	int snap;
-	/*
-	 * Selection variables:
-	 * nb – normalized coordinates of the beginning of the selection
-	 * ne – normalized coordinates of the end of the selection
-	 * ob – original coordinates of the beginning of the selection
-	 * oe – original coordinates of the end of the selection
-	 */
-	struct {
-		int x, y;
-	} nb, ne, ob, oe;
-
-	char *clip;
-	Atom xtarget;
-	bool alt;
-	struct timeval tclick1;
-	struct timeval tclick2;
-} Selection;
 
 typedef union {
 	int i;
@@ -308,9 +270,7 @@ typedef struct {
 } Shortcut;
 
 /* function definitions used in config.h */
-static void clippaste(const Arg *);
 static void numlock(const Arg *);
-static void selpaste(const Arg *);
 static void xzoom(const Arg *);
 
 /* Config.h for applying patches and the configuration. */
@@ -403,7 +363,6 @@ static void xsettitle(char *);
 static void xresettitle(void);
 static void xsetpointermotion(int);
 static void xseturgency(int);
-static void xsetsel(char*);
 static void xtermclear(int, int, int, int);
 static void xunloadfont(Font *f);
 static void xunloadfonts(void);
@@ -421,16 +380,6 @@ static void focus(XEvent *);
 static void brelease(XEvent *);
 static void bpress(XEvent *);
 static void bmotion(XEvent *);
-static void selnotify(XEvent *);
-static void selclear(XEvent *);
-static void selrequest(XEvent *);
-
-static void selinit(void);
-static void selsort(void);
-static inline bool selected(int, int);
-static void selcopy(void);
-static void selscroll(int, int);
-static void selsnap(int, int *, int *, int);
 
 static int utf8decode(char *, long *);
 static int utf8encode(long *, char *);
@@ -453,9 +402,6 @@ static void (*handler[LASTEvent])(XEvent *) = {
 	[MotionNotify] = bmotion,
 	[ButtonPress] = bpress,
 	[ButtonRelease] = brelease,
-	[SelectionClear] = selclear,
-	[SelectionNotify] = selnotify,
-	[SelectionRequest] = selrequest,
 };
 
 /* Globals */
@@ -466,7 +412,6 @@ static CSIEscape csiescseq;
 static STREscape strescseq;
 static int cmdfd;
 static pid_t pid;
-static Selection sel;
 static int iofd = -1;
 static char **opt_cmd = NULL;
 static char *opt_io = NULL;
@@ -652,18 +597,6 @@ utf8size(char *s) {
 	}
 }
 
-static void
-selinit(void) {
-	memset(&sel.tclick1, 0, sizeof(sel.tclick1));
-	memset(&sel.tclick2, 0, sizeof(sel.tclick2));
-	sel.mode = 0;
-	sel.ob.x = -1;
-	sel.clip = NULL;
-	sel.xtarget = XInternAtom(xw.dpy, "UTF8_STRING", 0);
-	if(sel.xtarget == None)
-		sel.xtarget = XA_STRING;
-}
-
 static int
 x2col(int x) {
 	x -= borderpx;
@@ -678,145 +611,6 @@ y2row(int y) {
 	y /= xw.ch;
 
 	return LIMIT(y, 0, term.row-1);
-}
-
-static void
-selsort(void) {
-	if(sel.ob.y == sel.oe.y) {
-		sel.nb.x = MIN(sel.ob.x, sel.oe.x);
-		sel.ne.x = MAX(sel.ob.x, sel.oe.x);
-	} else {
-		sel.nb.x = sel.ob.y < sel.oe.y ? sel.ob.x : sel.oe.x;
-		sel.ne.x = sel.ob.y < sel.oe.y ? sel.oe.x : sel.ob.x;
-	}
-	sel.nb.y = MIN(sel.ob.y, sel.oe.y);
-	sel.ne.y = MAX(sel.ob.y, sel.oe.y);
-}
-
-static inline bool
-selected(int x, int y) {
-	if(sel.ne.y == y && sel.nb.y == y)
-		return BETWEEN(x, sel.nb.x, sel.ne.x);
-
-	if(sel.type == SEL_RECTANGULAR) {
-		return ((sel.nb.y <= y && y <= sel.ne.y)
-			&& (sel.nb.x <= x && x <= sel.ne.x));
-	}
-
-	return ((sel.nb.y < y && y < sel.ne.y)
-		|| (y == sel.ne.y && x <= sel.ne.x))
-		|| (y == sel.nb.y && x >= sel.nb.x
-			&& (x <= sel.ne.x || sel.nb.y != sel.ne.y));
-}
-
-void
-selsnap(int mode, int *x, int *y, int direction) {
-	int i;
-
-	switch(mode) {
-	case SNAP_WORD:
-		/*
-		 * Snap around if the word wraps around at the end or
-		 * beginning of a line.
-		 */
-		for(;;) {
-			if(direction < 0 && *x <= 0) {
-				if(*y > 0 && term.line[*y - 1][term.col-1].mode
-						& ATTR_WRAP) {
-					*y -= 1;
-					*x = term.col-1;
-				} else {
-					break;
-				}
-			}
-			if(direction > 0 && *x >= term.col-1) {
-				if(*y < term.row-1 && term.line[*y][*x].mode
-						& ATTR_WRAP) {
-					*y += 1;
-					*x = 0;
-				} else {
-					break;
-				}
-			}
-
-			if(term.line[*y][*x+direction].mode & ATTR_WDUMMY) {
-				*x += direction;
-				continue;
-			}
-
-			if(strchr(worddelimiters,
-					term.line[*y][*x+direction].c[0])) {
-				break;
-			}
-
-			*x += direction;
-		}
-		break;
-	case SNAP_LINE:
-		/*
-		 * Snap around if the the previous line or the current one
-		 * has set ATTR_WRAP at its end. Then the whole next or
-		 * previous line will be selected.
-		 */
-		*x = (direction < 0) ? 0 : term.col - 1;
-		if(direction < 0 && *y > 0) {
-			for(; *y > 0; *y += direction) {
-				if(!(term.line[*y-1][term.col-1].mode
-						& ATTR_WRAP)) {
-					break;
-				}
-			}
-		} else if(direction > 0 && *y < term.row-1) {
-			for(; *y < term.row; *y += direction) {
-				if(!(term.line[*y][term.col-1].mode
-						& ATTR_WRAP)) {
-					break;
-				}
-			}
-		}
-		break;
-	default:
-		/*
-		 * Select the whole line when the end of line is reached.
-		 */
-		if(direction > 0) {
-			i = term.col;
-			while(--i > 0 && term.line[*y][i].c[0] == ' ')
-				/* nothing */;
-			if(i > 0 && i < *x)
-				*x = term.col - 1;
-		}
-		break;
-	}
-}
-
-void
-getbuttoninfo(XEvent *e) {
-	int type;
-	uint state = e->xbutton.state &~Button1Mask;
-
-	sel.alt = IS_SET(MODE_ALTSCREEN);
-
-	sel.oe.x = x2col(e->xbutton.x);
-	sel.oe.y = y2row(e->xbutton.y);
-
-	if(sel.ob.y < sel.oe.y
-			|| (sel.ob.y == sel.oe.y && sel.ob.x < sel.oe.x)) {
-		selsnap(sel.snap, &sel.ob.x, &sel.ob.y, -1);
-		selsnap(sel.snap, &sel.oe.x, &sel.oe.y, +1);
-	} else {
-		selsnap(sel.snap, &sel.oe.x, &sel.oe.y, -1);
-		selsnap(sel.snap, &sel.ob.x, &sel.ob.y, +1);
-	}
-	selsort();
-
-	sel.type = SEL_REGULAR;
-	for(type = 1; type < LEN(selmasks); ++type) {
-		if(match(selmasks[type], state)) {
-			sel.type = type;
-			break;
-		}
-	}
 }
 
 void
@@ -883,276 +677,23 @@ mousereport(XEvent *e) {
 
 void
 bpress(XEvent *e) {
-	struct timeval now;
-	Mousekey *mk;
-
 	if(IS_SET(MODE_MOUSE)) {
 		mousereport(e);
-		return;
 	}
-
-	for(mk = mshortcuts; mk < mshortcuts + LEN(mshortcuts); mk++) {
-		if(e->xbutton.button == mk->b
-				&& match(mk->mask, e->xbutton.state)) {
-			ttysend(mk->s, strlen(mk->s));
-			return;
-		}
-	}
-
-	if(e->xbutton.button == Button1) {
-		gettimeofday(&now, NULL);
-
-		/* Clear previous selection, logically and visually. */
-		selclear(NULL);
-		sel.mode = 1;
-		sel.type = SEL_REGULAR;
-		sel.oe.x = sel.ob.x = x2col(e->xbutton.x);
-		sel.oe.y = sel.ob.y = y2row(e->xbutton.y);
-
-		/*
-		 * If the user clicks below predefined timeouts specific
-		 * snapping behaviour is exposed.
-		 */
-		if(TIMEDIFF(now, sel.tclick2) <= tripleclicktimeout) {
-			sel.snap = SNAP_LINE;
-		} else if(TIMEDIFF(now, sel.tclick1) <= doubleclicktimeout) {
-			sel.snap = SNAP_WORD;
-		} else {
-			sel.snap = 0;
-		}
-		selsnap(sel.snap, &sel.ob.x, &sel.ob.y, -1);
-		selsnap(sel.snap, &sel.oe.x, &sel.oe.y, +1);
-		selsort();
-
-		/*
-		 * Draw selection, unless it's regular and we don't want to
-		 * make clicks visible
-		 */
-		if(sel.snap != 0) {
-			sel.mode++;
-			tsetdirt(sel.nb.y, sel.ne.y);
-		}
-		sel.tclick2 = sel.tclick1;
-		sel.tclick1 = now;
-	}
-}
-
-void
-selcopy(void) {
-	char *str, *ptr;
-	int x, y, bufsize, size, i, ex;
-	Glyph *gp, *last;
-
-	if(sel.ob.x == -1) {
-		str = NULL;
-	} else {
-		bufsize = (term.col+1) * (sel.ne.y-sel.nb.y+1) * UTF_SIZ;
-		ptr = str = xmalloc(bufsize);
-
-		/* append every set & selected glyph to the selection */
-		for(y = sel.nb.y; y < sel.ne.y + 1; y++) {
-			gp = &term.line[y][0];
-			last = gp + term.col;
-
-			while(--last >= gp && !(selected(last - gp, y) && \
-						strcmp(last->c, " ") != 0))
-				/* nothing */;
-
-			for(x = 0; gp <= last; x++, ++gp) {
-				if(!selected(x, y) || (gp->mode & ATTR_WDUMMY))
-					continue;
-
-				size = utf8size(gp->c);
-				memcpy(ptr, gp->c, size);
-				ptr += size;
-			}
-
-			/*
-			 * Copy and pasting of line endings is inconsistent
-			 * in the inconsistent terminal and GUI world.
-			 * The best solution seems like to produce '\n' when
-			 * something is copied from st and convert '\n' to
-			 * '\r', when something to be pasted is received by
-			 * st.
-			 * FIXME: Fix the computer world.
-			 */
-			if(y < sel.ne.y && x > 0 && !((gp-1)->mode & ATTR_WRAP))
-				*ptr++ = '\n';
-
-			/*
-			 * If the last selected line expands in the selection
-			 * after the visible text '\n' is appended.
-			 */
-			if(y == sel.ne.y) {
-				i = term.col;
-				while(--i > 0 && term.line[y][i].c[0] == ' ')
-					/* nothing */;
-				ex = sel.ne.x;
-				if(sel.nb.y == sel.ne.y && sel.ne.x < sel.nb.x)
-					ex = sel.nb.x;
-				if(i < ex)
-					*ptr++ = '\n';
-			}
-		}
-		*ptr = 0;
-	}
-	xsetsel(str);
-}
-
-void
-selnotify(XEvent *e) {
-	ulong nitems, ofs, rem;
-	int format;
-	uchar *data, *last, *repl;
-	Atom type;
-
-	ofs = 0;
-	do {
-		if(XGetWindowProperty(xw.dpy, xw.win, XA_PRIMARY, ofs, BUFSIZ/4,
-					False, AnyPropertyType, &type, &format,
-					&nitems, &rem, &data)) {
-			fprintf(stderr, "Clipboard allocation failed\n");
-			return;
-		}
-
-		/*
-		 * As seen in selcopy:
-		 * Line endings are inconsistent in the terminal and GUI world
-		 * copy and pasting. When receiving some selection data,
-		 * replace all '\n' with '\r'.
-		 * FIXME: Fix the computer world.
-		 */
-		repl = data;
-		last = data + nitems * format / 8;
-		while((repl = memchr(repl, '\n', last - repl))) {
-			*repl++ = '\r';
-		}
-
-		if(IS_SET(MODE_BRCKTPASTE))
-			ttywrite("\033[200~", 6);
-		ttysend((char *)data, nitems * format / 8);
-		if(IS_SET(MODE_BRCKTPASTE))
-			ttywrite("\033[201~", 6);
-		XFree(data);
-		/* number of 32-bit chunks returned */
-		ofs += nitems * format / 32;
-	} while(rem > 0);
-}
-
-void
-selpaste(const Arg *dummy) {
-	XConvertSelection(xw.dpy, XA_PRIMARY, sel.xtarget, XA_PRIMARY,
-			xw.win, CurrentTime);
-}
-
-void
-clippaste(const Arg *dummy) {
-	Atom clipboard;
-
-	clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
-	XConvertSelection(xw.dpy, clipboard, sel.xtarget, XA_PRIMARY,
-			xw.win, CurrentTime);
-}
-
-void
-selclear(XEvent *e) {
-	if(sel.ob.x == -1)
-		return;
-	sel.ob.x = -1;
-	tsetdirt(sel.nb.y, sel.ne.y);
-}
-
-void
-selrequest(XEvent *e) {
-	XSelectionRequestEvent *xsre;
-	XSelectionEvent xev;
-	Atom xa_targets, string;
-
-	xsre = (XSelectionRequestEvent *) e;
-	xev.type = SelectionNotify;
-	xev.requestor = xsre->requestor;
-	xev.selection = xsre->selection;
-	xev.target = xsre->target;
-	xev.time = xsre->time;
-	/* reject */
-	xev.property = None;
-
-	xa_targets = XInternAtom(xw.dpy, "TARGETS", 0);
-	if(xsre->target == xa_targets) {
-		/* respond with the supported type */
-		string = sel.xtarget;
-		XChangeProperty(xsre->display, xsre->requestor, xsre->property,
-				XA_ATOM, 32, PropModeReplace,
-				(uchar *) &string, 1);
-		xev.property = xsre->property;
-	} else if(xsre->target == sel.xtarget && sel.clip != NULL) {
-		XChangeProperty(xsre->display, xsre->requestor, xsre->property,
-				xsre->target, 8, PropModeReplace,
-				(uchar *) sel.clip, strlen(sel.clip));
-		xev.property = xsre->property;
-	}
-
-	/* all done, send a notification to the listener */
-	if(!XSendEvent(xsre->display, xsre->requestor, True, 0, (XEvent *) &xev))
-		fprintf(stderr, "Error sending SelectionNotify event\n");
-}
-
-void
-xsetsel(char *str) {
-	/* register the selection for both the clipboard and the primary */
-	Atom clipboard;
-
-	free(sel.clip);
-	sel.clip = str;
-
-	XSetSelectionOwner(xw.dpy, XA_PRIMARY, xw.win, CurrentTime);
-
-	clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
-	XSetSelectionOwner(xw.dpy, clipboard, xw.win, CurrentTime);
 }
 
 void
 brelease(XEvent *e) {
 	if(IS_SET(MODE_MOUSE)) {
 		mousereport(e);
-		return;
-	}
-
-	if(e->xbutton.button == Button2) {
-		selpaste(NULL);
-	} else if(e->xbutton.button == Button1) {
-		if(sel.mode < 2) {
-			selclear(NULL);
-		} else {
-			getbuttoninfo(e);
-			selcopy();
-		}
-		sel.mode = 0;
-		tsetdirt(sel.nb.y, sel.ne.y);
 	}
 }
 
 void
 bmotion(XEvent *e) {
-	int oldey, oldex, oldsby, oldsey;
-
 	if(IS_SET(MODE_MOUSE)) {
 		mousereport(e);
-		return;
 	}
-
-	if(!sel.mode)
-		return;
-
-	sel.mode++;
-	oldey = sel.oe.y;
-	oldex = sel.oe.x;
-	oldsby = sel.nb.y;
-	oldsey = sel.ne.y;
-	getbuttoninfo(e);
-
-	if(oldey != sel.oe.y || oldex != sel.oe.x)
-		tsetdirt(MIN(sel.nb.y, oldsby), MAX(sel.ne.y, oldsey));
 }
 
 void
@@ -1434,8 +975,6 @@ tscrolldown(int orig, int n) {
 		term.dirty[i] = 1;
 		term.dirty[i-n] = 1;
 	}
-
-	selscroll(orig, n);
 }
 
 void
@@ -1453,37 +992,6 @@ tscrollup(int orig, int n) {
 
 		 term.dirty[i] = 1;
 		 term.dirty[i+n] = 1;
-	}
-
-	selscroll(orig, -n);
-}
-
-void
-selscroll(int orig, int n) {
-	if(sel.ob.x == -1)
-		return;
-
-	if(BETWEEN(sel.ob.y, orig, term.bot) || BETWEEN(sel.oe.y, orig, term.bot)) {
-		if((sel.ob.y += n) > term.bot || (sel.oe.y += n) < term.top) {
-			selclear(NULL);
-			return;
-		}
-		if(sel.type == SEL_RECTANGULAR) {
-			if(sel.ob.y < term.top)
-				sel.ob.y = term.top;
-			if(sel.oe.y > term.bot)
-				sel.oe.y = term.bot;
-		} else {
-			if(sel.ob.y < term.top) {
-				sel.ob.y = term.top;
-				sel.ob.x = 0;
-			}
-			if(sel.oe.y > term.bot) {
-				sel.oe.y = term.bot;
-				sel.oe.x = term.col;
-			}
-		}
-		selsort();
 	}
 }
 
@@ -1606,8 +1114,6 @@ tclearregion(int x1, int y1, int x2, int y2) {
 	for(y = y1; y <= y2; y++) {
 		term.dirty[y] = 1;
 		for(x = x1; x <= x2; x++) {
-			if(selected(x, y))
-				selclear(NULL);
 			term.line[y][x] = term.c.attr;
 			memcpy(term.line[y][x].c, " ", 2);
 		}
@@ -2016,7 +1522,6 @@ csihandle(void) {
 			tputtab(1);
 		break;
 	case 'J': /* ED -- Clear screen */
-		selclear(NULL);
 		switch(csiescseq.arg[0]) {
 		case 0: /* below */
 			tclearregion(term.c.x, term.c.y, term.col-1, term.c.y);
@@ -2542,8 +2047,6 @@ tputc(char *c, int len) {
 	 */
 	if(control && !(term.c.attr.mode & ATTR_GFX))
 		return;
-	if(sel.ob.x != -1 && BETWEEN(term.c.y, sel.ob.y, sel.oe.y))
-		selclear(NULL);
 	if(IS_SET(MODE_WRAP) && (term.c.state & CURSOR_WRAPNEXT)) {
 		term.line[term.c.y][term.c.x].mode |= ATTR_WRAP;
 		tnewline(1);
@@ -3391,11 +2894,7 @@ drawregion(int x1, int y1, int x2, int y2) {
 	int ic, ib, x, y, ox, sl;
 	Glyph base, new;
 	char buf[DRAW_BUF_SIZ];
-	bool ena_sel = sel.ob.x != -1;
 	long u8char;
-
-	if(sel.alt ^ IS_SET(MODE_ALTSCREEN))
-		ena_sel = 0;
 
 	if(!(xw.state & WIN_VISIBLE))
 		return;
@@ -3412,8 +2911,6 @@ drawregion(int x1, int y1, int x2, int y2) {
 			new = term.line[y][x];
 			if(new.mode == ATTR_WDUMMY)
 				continue;
-			if(ena_sel && selected(x, y))
-				new.mode ^= ATTR_REVERSE;
 			if(ib > 0 && (ATTRCMP(base, new)
 					|| ib >= DRAW_BUF_SIZ-UTF_SIZ)) {
 				xdraws(buf, base, ox, y, ic, ib);
@@ -3832,7 +3329,6 @@ run:
 	XSetLocaleModifiers("");
 	tnew(80, 24);
 	xinit();
-	selinit();
 	run();
 
 	return 0;
