@@ -277,19 +277,24 @@ typedef struct {
 	GC gc;
 } DC;
 
-static void die(const char *, ...);
+// pty.c
+static void execsh(void);
+static void sigchld(int);
+static void ttynew(void);
+
+static void ttyread(void);
+static void ttyresize(void);
+static void ttysend(char *, size_t);
+static void ttywrite(const char *, size_t);
+
 static void draw(void);
 static void redraw(int);
 static void drawregion(int, int, int, int);
-static void execsh(void);
-static void sigchld(int);
 static void run(void);
 
-static void csidump(void);
 static void csihandle(void);
 static void csiparse(void);
 static void csireset(void);
-static void strdump(void);
 static void strhandle(void);
 static void strparse(void);
 static void strreset(void);
@@ -324,11 +329,6 @@ static long tdefcolor(int *, int *, int);
 static void tselcs(void);
 static void tdeftran(char);
 static inline bool match(uint, uint);
-static void ttynew(void);
-static void ttyread(void);
-static void ttyresize(void);
-static void ttysend(char *, size_t);
-static void ttywrite(const char *, size_t);
 
 static void xdraws(char *, Glyph, int, int, int, int);
 static void xhints(void);
@@ -369,6 +369,10 @@ static int isfullutf8(char *, int);
 static ssize_t xwrite(int, char *, size_t);
 static void *xmalloc(size_t);
 static void *xrealloc(void *, size_t);
+static void die(const char *, ...);
+
+static void csidump(void);
+static void strdump(void);
 
 static void (*handler[LASTEvent])(XEvent *) = {
 	[KeyPress] = kpress,
@@ -522,113 +526,7 @@ bmotion(XEvent *e) {
 	}
 }
 
-void
-die(const char *errstr, ...) {
-	va_list ap;
-
-	va_start(ap, errstr);
-	vfprintf(stderr, errstr, ap);
-	va_end(ap);
-	exit(EXIT_FAILURE);
-}
-
-void
-execsh(void) {
-	char **args;
-	char *envshell = getenv("SHELL");
-	const struct passwd *pass = getpwuid(getuid());
-	char buf[sizeof(long) * 8 + 1];
-
-	unsetenv("COLUMNS");
-	unsetenv("LINES");
-	unsetenv("TERMCAP");
-
-	if(pass) {
-		setenv("LOGNAME", pass->pw_name, 1);
-		setenv("USER", pass->pw_name, 1);
-		setenv("SHELL", pass->pw_shell, 0);
-		setenv("HOME", pass->pw_dir, 0);
-	}
-
-	snprintf(buf, sizeof(buf), "%lu", xw.win);
-	setenv("WINDOWID", buf, 1);
-
-	signal(SIGCHLD, SIG_DFL);
-	signal(SIGHUP, SIG_DFL);
-	signal(SIGINT, SIG_DFL);
-	signal(SIGQUIT, SIG_DFL);
-	signal(SIGTERM, SIG_DFL);
-	signal(SIGALRM, SIG_DFL);
-
-	DEFAULT(envshell, shell);
-	setenv("TERM", termname, 1);
-	args = opt_cmd ? opt_cmd : (char *[]){envshell, "-i", NULL};
-	execvp(args[0], args);
-	exit(EXIT_FAILURE);
-}
-
-void
-sigchld(int a) {
-	int stat = 0;
-
-	if(waitpid(pid, &stat, 0) < 0)
-		die("Waiting for pid %hd failed: %s\n", pid, SERRNO);
-
-	if(WIFEXITED(stat)) {
-		exit(WEXITSTATUS(stat));
-	} else {
-		exit(EXIT_FAILURE);
-	}
-}
-
-void
-ttynew(void) {
-	int m, s;
-	struct winsize w = {term.row, term.col, 0, 0};
-
-	/* seems to work fine on linux, openbsd and freebsd */
-	if(openpty(&m, &s, NULL, NULL, &w) < 0)
-		die("openpty failed: %s\n", SERRNO);
-
-	switch(pid = fork()) {
-	case -1:
-		die("fork failed\n");
-		break;
-	case 0:
-		setsid(); /* create a new process group */
-		dup2(s, STDIN_FILENO);
-		dup2(s, STDOUT_FILENO);
-		dup2(s, STDERR_FILENO);
-		if(ioctl(s, TIOCSCTTY, NULL) < 0)
-			die("ioctl TIOCSCTTY failed: %s\n", SERRNO);
-		close(s);
-		close(m);
-		execsh();
-		break;
-	default:
-		close(s);
-		cmdfd = m;
-		signal(SIGCHLD, sigchld);
-		if(opt_io) {
-			iofd = (!strcmp(opt_io, "-")) ?
-				  STDOUT_FILENO :
-				  open(opt_io, O_WRONLY | O_CREAT, 0666);
-			if(iofd < 0) {
-				fprintf(stderr, "Error opening %s:%s\n",
-					opt_io, strerror(errno));
-			}
-		}
-	}
-}
-
-void
-dump(char c) {
-	static int col;
-
-	fprintf(stderr, " %02x '%c' ", c, isprint(c)?c:'.');
-	if(++col % 10 == 0)
-		fprintf(stderr, "\n");
-}
+#include "pty.c"
 
 void
 ttyread(void) {
@@ -1451,29 +1349,6 @@ csihandle(void) {
 }
 
 void
-csidump(void) {
-	int i;
-	uint c;
-
-	printf("ESC[");
-	for(i = 0; i < csiescseq.len; i++) {
-		c = csiescseq.buf[i] & 0xff;
-		if(isprint(c)) {
-			putchar(c);
-		} else if(c == '\n') {
-			printf("(\\n)");
-		} else if(c == '\r') {
-			printf("(\\r)");
-		} else if(c == 0x1b) {
-			printf("(\\e)");
-		} else {
-			printf("(%02x)", c);
-		}
-	}
-	putchar('\n');
-}
-
-void
 csireset(void) {
 	memset(&csiescseq, 0, sizeof(csiescseq));
 }
@@ -1540,31 +1415,6 @@ strparse(void) {
 	strescseq.buf[strescseq.len] = '\0';
 	while(p && strescseq.narg < STR_ARG_SIZ)
 		strescseq.args[strescseq.narg++] = strsep(&p, ";");
-}
-
-void
-strdump(void) {
-	int i;
-	uint c;
-
-	printf("ESC%c", strescseq.type);
-	for(i = 0; i < strescseq.len; i++) {
-		c = strescseq.buf[i] & 0xff;
-		if(c == '\0') {
-			return;
-		} else if(isprint(c)) {
-			putchar(c);
-		} else if(c == '\n') {
-			printf("(\\n)");
-		} else if(c == '\r') {
-			printf("(\\r)");
-		} else if(c == 0x1b) {
-			printf("(\\e)");
-		} else {
-			printf("(%02x)", c);
-		}
-	}
-	printf("ESC\\\n");
 }
 
 void

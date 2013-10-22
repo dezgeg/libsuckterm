@@ -153,3 +153,61 @@ utf8size(char *s) {
 		return 4;
 	}
 }
+
+void
+die(const char *errstr, ...) {
+	va_list ap;
+
+	va_start(ap, errstr);
+	vfprintf(stderr, errstr, ap);
+	va_end(ap);
+	exit(EXIT_FAILURE);
+}
+
+void
+csidump(void) {
+	int i;
+	uint c;
+
+	printf("ESC[");
+	for(i = 0; i < csiescseq.len; i++) {
+		c = csiescseq.buf[i] & 0xff;
+		if(isprint(c)) {
+			putchar(c);
+		} else if(c == '\n') {
+			printf("(\\n)");
+		} else if(c == '\r') {
+			printf("(\\r)");
+		} else if(c == 0x1b) {
+			printf("(\\e)");
+		} else {
+			printf("(%02x)", c);
+		}
+	}
+	putchar('\n');
+}
+
+void
+strdump(void) {
+	int i;
+	uint c;
+
+	printf("ESC%c", strescseq.type);
+	for(i = 0; i < strescseq.len; i++) {
+		c = strescseq.buf[i] & 0xff;
+		if(c == '\0') {
+			return;
+		} else if(isprint(c)) {
+			putchar(c);
+		} else if(c == '\n') {
+			printf("(\\n)");
+		} else if(c == '\r') {
+			printf("(\\r)");
+		} else if(c == 0x1b) {
+			printf("(\\e)");
+		} else {
+			printf("(%02x)", c);
+		}
+	}
+	printf("ESC\\\n");
+}
