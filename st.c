@@ -299,7 +299,6 @@ static void strhandle(void);
 static void strparse(void);
 static void strreset(void);
 
-static int tattrset(int);
 static void tclearregion(int, int, int, int);
 static void tcursor(int);
 static void tdeletechar(int);
@@ -316,12 +315,10 @@ static void treset(void);
 static int tresize(int, int);
 static void tscrollup(int, int);
 static void tscrolldown(int, int);
-static void tsetattr(int*, int);
 static void tsetchar(char *, Glyph *, int, int);
 static void tsetscroll(int, int);
 static void tswapscreen(void);
 static void tsetdirt(int, int);
-static void tsetdirtattr(int);
 static void tsetmode(bool, bool, int *, int);
 static void tfulldirt(void);
 static void techo(char *, int);
@@ -562,20 +559,6 @@ ttyresize(void) {
 		fprintf(stderr, "Couldn't set window size: %s\n", SERRNO);
 }
 
-int
-tattrset(int attr) {
-	int i, j;
-
-	for(i = 0; i < term.row-1; i++) {
-		for(j = 0; j < term.col-1; j++) {
-			if(term.line[i][j].mode & attr)
-				return 1;
-		}
-	}
-
-	return 0;
-}
-
 void
 tsetdirt(int top, int bot) {
 	int i;
@@ -585,20 +568,6 @@ tsetdirt(int top, int bot) {
 
 	for(i = top; i <= bot; i++)
 		term.dirty[i] = 1;
-}
-
-void
-tsetdirtattr(int attr) {
-	int i, j;
-
-	for(i = 0; i < term.row-1; i++) {
-		for(j = 0; j < term.col-1; j++) {
-			if(term.line[i][j].mode & attr) {
-				tsetdirt(i, i);
-				break;
-			}
-		}
-	}
 }
 
 void
@@ -2264,8 +2233,11 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 		bg = temp;
 	}
 
+#if 0
+	// Reimplement this in X client.
 	if(base.mode & ATTR_BLINK && term.mode & MODE_BLINK)
 		fg = bg;
+#endif
 
 	/* Intelligent cleaning up of the borders. */
 	if(x == 0) {
@@ -2653,8 +2625,8 @@ run(void) {
 	XEvent ev;
 	int w = xw.w, h = xw.h;
 	fd_set rfd;
-	int xfd = XConnectionNumber(xw.dpy), xev, blinkset = 0, dodraw = 0;
-	struct timeval drawtimeout, *tv = NULL, now, last, lastblink;
+	int xfd = XConnectionNumber(xw.dpy), xev, dodraw = 0;
+	struct timeval drawtimeout, *tv = NULL, now, last;
 
 	/* Waiting for window mapping */
 	while(1) {
@@ -2673,7 +2645,6 @@ run(void) {
 		cresize(xw.fw, xw.fh);
 	ttynew();
 
-	gettimeofday(&lastblink, NULL);
 	gettimeofday(&last, NULL);
 
 	for(xev = actionfps;;) {
@@ -2688,11 +2659,6 @@ run(void) {
 		}
 		if(FD_ISSET(cmdfd, &rfd)) {
 			ttyread();
-			if(blinktimeout) {
-				blinkset = tattrset(ATTR_BLINK);
-				if(!blinkset)
-					MODBIT(term.mode, 0, MODE_BLINK);
-			}
 		}
 
 		if(FD_ISSET(xfd, &rfd))
@@ -2704,12 +2670,6 @@ run(void) {
 		tv = &drawtimeout;
 
 		dodraw = 0;
-		if(blinktimeout && TIMEDIFF(now, lastblink) > blinktimeout) {
-			tsetdirtattr(ATTR_BLINK);
-			term.mode ^= MODE_BLINK;
-			gettimeofday(&lastblink, NULL);
-			dodraw = 1;
-		}
 		if(TIMEDIFF(now, last) \
 				> (xev? (1000/xfps) : (1000/actionfps))) {
 			dodraw = 1;
@@ -2731,19 +2691,7 @@ run(void) {
 			if(xev && !FD_ISSET(xfd, &rfd))
 				xev--;
 			if(!FD_ISSET(cmdfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
-				if(blinkset) {
-					if(TIMEDIFF(now, lastblink) \
-							> blinktimeout) {
-						drawtimeout.tv_usec = 1;
-					} else {
-						drawtimeout.tv_usec = (1000 * \
-							(blinktimeout - \
-							TIMEDIFF(now,
-								lastblink)));
-					}
-				} else {
-					tv = NULL;
-				}
+				tv = NULL;
 			}
 		}
 	}
