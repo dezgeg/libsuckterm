@@ -75,14 +75,5 @@ ttynew(void) {
 		close(s);
 		cmdfd = m;
 		signal(SIGCHLD, sigchld);
-		if(opt_io) {
-			iofd = (!strcmp(opt_io, "-")) ?
-				  STDOUT_FILENO :
-				  open(opt_io, O_WRONLY | O_CREAT, 0666);
-			if(iofd < 0) {
-				fprintf(stderr, "Error opening %s:%s\n",
-					opt_io, strerror(errno));
-			}
-		}
 	}
 }

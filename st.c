@@ -392,9 +392,7 @@ static CSIEscape csiescseq;
 static STREscape strescseq;
 static int cmdfd;
 static pid_t pid;
-static int iofd = -1;
 static char **opt_cmd = NULL;
-static char *opt_io = NULL;
 static char *opt_title = NULL;
 static char *opt_embed = NULL;
 static char *opt_class = NULL;
@@ -1450,15 +1448,6 @@ tputc(char *c, int len) {
 		width = wcwidth(u8char);
 	}
 
-	if(iofd != -1) {
-		if(xwrite(iofd, c, len) < 0) {
-			fprintf(stderr, "Error writing in %s:%s\n",
-				opt_io, strerror(errno));
-			close(iofd);
-			iofd = -1;
-		}
-	}
-
 	/*
 	 * STR sequences must be checked before anything else
 	 * because it can use some control codes as part of the sequence.
@@ -2001,9 +1990,6 @@ main(int argc, char *argv[]) {
 		goto run;
 	case 'f':
 		opt_font = EARGF(usage());
-		break;
-	case 'o':
-		opt_io = EARGF(usage());
 		break;
 	case 't':
 		opt_title = EARGF(usage());
