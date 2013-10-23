@@ -1,3 +1,76 @@
+static void (*handler[LASTEvent])(XEvent *) = {
+	[KeyPress] = kpress,
+	[ClientMessage] = cmessage,
+	[ConfigureNotify] = resize,
+	[VisibilityNotify] = visibility,
+	[UnmapNotify] = unmap,
+	[Expose] = expose,
+	[FocusIn] = focus,
+	[FocusOut] = focus,
+	[MotionNotify] = bmotion,
+	[ButtonPress] = bpress,
+	[ButtonRelease] = brelease,
+};
+
+static inline bool
+match(uint mask, uint state) {
+	state &= ~ignoremod;
+
+	if(mask == XK_NO_MOD && state)
+		return false;
+	if(mask != XK_ANY_MOD && mask != XK_NO_MOD && !state)
+		return false;
+	if(mask == XK_ANY_MOD)
+		return true;
+	return state == mask;
+}
+
+char*
+kmap(KeySym k, uint state) {
+	Key *kp;
+	int i;
+
+	/* Check for mapped keys out of X11 function keys. */
+	for(i = 0; i < LEN(mappedkeys); i++) {
+		if(mappedkeys[i] == k)
+			break;
+	}
+	if(i == LEN(mappedkeys)) {
+		if((k & 0xFFFF) < 0xFD00)
+			return NULL;
+	}
+
+	for(kp = key; kp < key + LEN(key); kp++) {
+		if(kp->k != k)
+			continue;
+
+		if(!match(kp->mask, state))
+			continue;
+
+		if(kp->appkey > 0) {
+			if(!IS_SET(MODE_APPKEYPAD))
+				continue;
+		} else if(kp->appkey < 0 && IS_SET(MODE_APPKEYPAD)) {
+			continue;
+		}
+
+		if((kp->appcursor < 0 && IS_SET(MODE_APPCURSOR)) ||
+				(kp->appcursor > 0
+				 && !IS_SET(MODE_APPCURSOR))) {
+			continue;
+		}
+
+		if((kp->crlf < 0 && IS_SET(MODE_CRLF)) ||
+				(kp->crlf > 0 && !IS_SET(MODE_CRLF))) {
+			continue;
+		}
+
+		return kp->s;
+	}
+
+	return NULL;
+}
+
 void
 kpress(XEvent *ev) {
 	XKeyEvent *e = &ev->xkey;
