@@ -208,6 +208,7 @@ typedef struct {
 typedef struct {
 	int row;      /* nb row */
 	int col;      /* nb col */
+	int tw, th;   /* tty width and height in pixels, for TIOCSWINSZ */
 	Line *line;   /* screen */
 	Line *alt;    /* alternate screen */
 	bool *dirty;  /* dirtyness of lines */
@@ -553,8 +554,8 @@ ttyresize(void) {
 
 	w.ws_row = term.row;
 	w.ws_col = term.col;
-	w.ws_xpixel = xw.tw;
-	w.ws_ypixel = xw.th;
+	w.ws_xpixel = term.tw;
+	w.ws_ypixel = term.th;
 	if(ioctl(cmdfd, TIOCSWINSZ, &w) < 0)
 		fprintf(stderr, "Couldn't set window size: %s\n", SERRNO);
 }
@@ -1847,6 +1848,8 @@ cresize(int width, int height) {
 	col = (xw.w - 2 * borderpx) / xw.cw;
 	row = (xw.h - 2 * borderpx) / xw.ch;
 
+	term.tw = MAX(1, col * xw.cw);
+	term.th = MAX(1, row * xw.ch);
 	tresize(col, row);
 	xresize(col, row);
 	ttyresize();
