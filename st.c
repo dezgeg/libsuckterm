@@ -286,6 +286,10 @@ static void libsuckterm_cb_set_pointer_motion(int);
 static void libsuckterm_cb_set_urgency(int);
 // End callbacks
 
+// Start exports
+static void libsuckterm_set_size(int col, int row, int cw, int ch);
+// End exports
+
 // pty.c
 static void execsh(void);
 static void sigchld(int);
@@ -359,7 +363,7 @@ static void bpress(XEvent *);
 static void bmotion(XEvent *);
 
 static char *kmap(KeySym, uint);
-static void cresize(int, int);
+static void xsetsize(int, int);
 
 // helpers.c
 static int utf8decode(char *, long *);
@@ -1837,7 +1841,15 @@ kmap(KeySym k, uint state) {
 }
 
 void
-cresize(int width, int height) {
+libsuckterm_set_size(int col, int row, int cw, int ch) {
+	term.tw = MAX(1, col * cw);
+	term.th = MAX(1, row * ch);
+	tresize(col, row);
+	ttyresize();
+}
+
+void
+xsetsize(int width, int height) {
 	int col, row;
 
 	if(width != 0)
@@ -1848,11 +1860,8 @@ cresize(int width, int height) {
 	col = (xw.w - 2 * borderpx) / xw.cw;
 	row = (xw.h - 2 * borderpx) / xw.ch;
 
-	term.tw = MAX(1, col * xw.cw);
-	term.th = MAX(1, row * xw.ch);
-	tresize(col, row);
+	libsuckterm_set_size(col, row, xw.cw, xw.ch);
 	xresize(col, row);
-	ttyresize();
 }
 
 void
@@ -1875,9 +1884,9 @@ run(void) {
 	}
 
 	if(!xw.isfixed)
-		cresize(w, h);
+		xsetsize(w, h);
 	else
-		cresize(xw.fw, xw.fh);
+		xsetsize(xw.fw, xw.fh);
 	ttynew();
 
 	gettimeofday(&last, NULL);

@@ -63,7 +63,7 @@ resize(XEvent *e) {
 	if(e->xconfigure.width == xw.w && e->xconfigure.height == xw.h)
 		return;
 
-	cresize(e->xconfigure.width, e->xconfigure.height);
+	xsetsize(e->xconfigure.width, e->xconfigure.height);
 }
 
 void
