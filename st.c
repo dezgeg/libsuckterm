@@ -236,8 +236,6 @@ typedef struct {
 	Visual *vis;
 	XSetWindowAttributes attrs;
 	int scr;
-	bool isfixed; /* is fixed geometry? */
-	int fx, fy, fw, fh; /* fixed geometry */
 	int tw, th; /* tty width and height */
 	int w, h; /* window width and height */
 	int ch; /* char height */
@@ -1810,10 +1808,7 @@ run(void) {
 		}
 	}
 
-	if(!xw.isfixed)
-		xsetsize(w, h);
-	else
-		xsetsize(xw.fw, xw.fh);
+	xsetsize(w, h);
 	ttynew();
 
 	gettimeofday(&last, NULL);
@@ -1878,9 +1873,6 @@ usage(void) {
 int
 main(int argc, char *argv[]) {
 	char *titles;
-
-	xw.fw = xw.fh = xw.fx = xw.fy = 0;
-	xw.isfixed = False;
 
 	ARGBEGIN {
 	case 'a':

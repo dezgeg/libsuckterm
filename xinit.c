@@ -96,19 +96,13 @@ xhints(void) {
 	XSizeHints *sizeh = NULL;
 
 	sizeh = XAllocSizeHints();
-	if(xw.isfixed == False) {
-		sizeh->flags = PSize | PResizeInc | PBaseSize;
-		sizeh->height = xw.h;
-		sizeh->width = xw.w;
-		sizeh->height_inc = xw.ch;
-		sizeh->width_inc = xw.cw;
-		sizeh->base_height = 2 * borderpx;
-		sizeh->base_width = 2 * borderpx;
-	} else {
-		sizeh->flags = PMaxSize | PMinSize;
-		sizeh->min_width = sizeh->max_width = xw.fw;
-		sizeh->min_height = sizeh->max_height = xw.fh;
-	}
+	sizeh->flags = PSize | PResizeInc | PBaseSize;
+	sizeh->height = xw.h;
+	sizeh->width = xw.w;
+	sizeh->height_inc = xw.ch;
+	sizeh->width_inc = xw.cw;
+	sizeh->base_height = 2 * borderpx;
+	sizeh->base_width = 2 * borderpx;
 
 	XSetWMProperties(xw.dpy, xw.win, NULL, NULL, NULL, 0, sizeh, &wm, &class);
 	XFree(sizeh);
@@ -119,7 +113,6 @@ xinit(void) {
 	XGCValues gcvalues;
 	Cursor cursor;
 	Window parent;
-	int sw, sh;
 
 	if(!(xw.dpy = XOpenDisplay(NULL)))
 		die("Can't open display\n");
@@ -137,24 +130,9 @@ xinit(void) {
 	xw.cmap = XDefaultColormap(xw.dpy, xw.scr);
 	xloadcols();
 
-	/* adjust fixed window geometry */
-	if(xw.isfixed) {
-		sw = DisplayWidth(xw.dpy, xw.scr);
-		sh = DisplayHeight(xw.dpy, xw.scr);
-		if(xw.fx < 0)
-			xw.fx = sw + xw.fx - xw.fw - 1;
-		if(xw.fy < 0)
-			xw.fy = sh + xw.fy - xw.fh - 1;
-
-		xw.h = xw.fh;
-		xw.w = xw.fw;
-	} else {
-		/* window - default size */
-		xw.h = 2 * borderpx + term.row * xw.ch;
-		xw.w = 2 * borderpx + term.col * xw.cw;
-		xw.fx = 0;
-		xw.fy = 0;
-	}
+	/* window - default size */
+	xw.h = 2 * borderpx + term.row * xw.ch;
+	xw.w = 2 * borderpx + term.col * xw.cw;
 
 	/* Events */
 	xw.attrs.background_pixel = dc.col[defaultbg].pixel;
@@ -167,7 +145,7 @@ xinit(void) {
 
 	parent = opt_embed ? strtol(opt_embed, NULL, 0) : \
 			XRootWindow(xw.dpy, xw.scr);
-	xw.win = XCreateWindow(xw.dpy, parent, xw.fx, xw.fy,
+	xw.win = XCreateWindow(xw.dpy, parent, 0, 0,
 			xw.w, xw.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
 			xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
 			| CWEventMask | CWColormap, &xw.attrs);
