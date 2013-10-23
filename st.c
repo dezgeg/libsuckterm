@@ -362,7 +362,7 @@ static int utf8encode(long *, char *);
 static int utf8size(char *);
 static int isfullutf8(char *, int);
 
-static ssize_t xwrite(int, char *, size_t);
+static ssize_t xwrite(int, const char *, size_t);
 static void *xmalloc(size_t);
 static void *xrealloc(void *, size_t);
 static void die(const char *, ...);
@@ -532,7 +532,7 @@ ttyread(void) {
 
 void
 ttywrite(const char *s, size_t n) {
-	if(write(cmdfd, s, n) == -1)
+	if(xwrite(cmdfd, s, n) == -1)
 		die("write error on tty: %s\n", SERRNO);
 }
 

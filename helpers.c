@@ -1,5 +1,5 @@
 ssize_t
-xwrite(int fd, char *s, size_t len) {
+xwrite(int fd, const char *s, size_t len) {
 	size_t aux = len;
 
 	while(len > 0) {
