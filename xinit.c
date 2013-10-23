@@ -213,7 +213,7 @@ xinit(void) {
 	xw.wmdeletewin = XInternAtom(xw.dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(xw.dpy, xw.win, &xw.wmdeletewin, 1);
 
-	xresettitle();
+	libsuckterm_cb_reset_title();
 	XMapWindow(xw.dpy, xw.win);
 	xhints();
 	XSync(xw.dpy, 0);

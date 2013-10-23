@@ -47,7 +47,7 @@ cmessage(XEvent *e) {
 	if(e->xclient.message_type == xw.xembed && e->xclient.format == 32) {
 		if(e->xclient.data.l[1] == XEMBED_FOCUS_IN) {
 			xw.state |= WIN_FOCUSED;
-			xseturgency(0);
+			libsuckterm_cb_set_urgency(0);
 		} else if(e->xclient.data.l[1] == XEMBED_FOCUS_OUT) {
 			xw.state &= ~WIN_FOCUSED;
 		}
@@ -104,7 +104,7 @@ focus(XEvent *ev) {
 	if(ev->type == FocusIn) {
 		XSetICFocus(xw.xic);
 		xw.state |= WIN_FOCUSED;
-		xseturgency(0);
+		libsuckterm_cb_set_urgency(0);
 		if(IS_SET(MODE_FOCUS))
 			ttywrite("\033[I", 3);
 	} else {

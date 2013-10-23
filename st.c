@@ -277,6 +277,14 @@ typedef struct {
 	GC gc;
 } DC;
 
+// Start callbacks
+static void libsuckterm_cb_bell(void);
+static void libsuckterm_cb_set_title(char *);
+static void libsuckterm_cb_reset_title(void);
+static void libsuckterm_cb_set_pointer_motion(int);
+static void libsuckterm_cb_set_urgency(int);
+// End callbacks
+
 // pty.c
 static void execsh(void);
 static void sigchld(int);
@@ -335,10 +343,6 @@ static void xinit(void);
 static void xloadcols(void);
 static int xsetcolorname(int, const char *);
 static int xloadfontset(Font *);
-static void xsettitle(char *);
-static void xresettitle(void);
-static void xsetpointermotion(int);
-static void xseturgency(int);
 static void xtermclear(int, int, int, int);
 static void xresize(int, int);
 
@@ -1024,22 +1028,22 @@ tsetmode(bool priv, bool set, int *args, int narg) {
 				MODBIT(term.mode, !set, MODE_HIDE);
 				break;
 			case 9:    /* X10 mouse compatibility mode */
-				xsetpointermotion(0);
+				libsuckterm_cb_set_pointer_motion(0);
 				MODBIT(term.mode, 0, MODE_MOUSE);
 				MODBIT(term.mode, set, MODE_MOUSEX10);
 				break;
 			case 1000: /* 1000: report button press */
-				xsetpointermotion(0);
+				libsuckterm_cb_set_pointer_motion(0);
 				MODBIT(term.mode, 0, MODE_MOUSE);
 				MODBIT(term.mode, set, MODE_MOUSEBTN);
 				break;
 			case 1002: /* 1002: report motion on button press */
-				xsetpointermotion(0);
+				libsuckterm_cb_set_pointer_motion(0);
 				MODBIT(term.mode, 0, MODE_MOUSE);
 				MODBIT(term.mode, set, MODE_MOUSEMOTION);
 				break;
 			case 1003: /* 1003: enable all mouse motions */
-				xsetpointermotion(set);
+				libsuckterm_cb_set_pointer_motion(set);
 				MODBIT(term.mode, 0, MODE_MOUSE);
 				MODBIT(term.mode, set, MODE_MOUSEMANY);
 				break;
@@ -1313,7 +1317,7 @@ strhandle(void) {
 		case 1:
 		case 2:
 			if(narg > 1)
-				xsettitle(strescseq.args[1]);
+				libsuckterm_cb_set_title(strescseq.args[1]);
 			break;
 		case 4: /* color set */
 			if(narg < 3)
@@ -1339,7 +1343,7 @@ strhandle(void) {
 		}
 		break;
 	case 'k': /* old title set compatibility */
-		xsettitle(strescseq.args[0]);
+		libsuckterm_cb_set_title(strescseq.args[0]);
 		break;
 	case 'P': /* DSC -- Device Control String */
 	case '_': /* APC -- Application Program Command */
@@ -1507,10 +1511,7 @@ tputc(char *c, int len) {
 			tnewline(IS_SET(MODE_CRLF));
 			return;
 		case '\a':   /* BEL */
-			if(!(xw.state & WIN_FOCUSED))
-				xseturgency(1);
-			if (bellvolume)
-				XBell(xw.dpy, bellvolume);
+			libsuckterm_cb_bell();
 			return;
 		case '\033': /* ESC */
 			csireset();
@@ -1619,7 +1620,7 @@ tputc(char *c, int len) {
 			case 'c': /* RIS -- Reset to inital state */
 				treset();
 				term.esc = 0;
-				xresettitle();
+				libsuckterm_cb_reset_title();
 				xloadcols();
 				break;
 			case '=': /* DECPAM -- Application keypad */
@@ -1770,39 +1771,10 @@ tresize(int col, int row) {
 	return (slide > 0);
 }
 
+#include "xcallback.c"
 #include "xinit.c"
 #include "xdraw.c"
-void
-xsettitle(char *p) {
-	XTextProperty prop;
-
-	Xutf8TextListToTextProperty(xw.dpy, &p, 1, XUTF8StringStyle,
-			&prop);
-	XSetWMName(xw.dpy, xw.win, &prop);
-	XFree(prop.value);
-}
-
-void
-xresettitle(void) {
-	xsettitle(opt_title ? opt_title : "st");
-}
-
 #include "xevent.c"
-
-void
-xsetpointermotion(int set) {
-	MODBIT(xw.attrs.event_mask, set, PointerMotionMask);
-	XChangeWindowAttributes(xw.dpy, xw.win, CWEventMask, &xw.attrs);
-}
-
-void
-xseturgency(int add) {
-	XWMHints *h = XGetWMHints(xw.dpy, xw.win);
-
-	h->flags = add ? (h->flags | XUrgencyHint) : (h->flags & ~XUrgencyHint);
-	XSetWMHints(xw.dpy, xw.win, h);
-	XFree(h);
-}
 
 static inline bool
 match(uint mask, uint state) {
