@@ -1,9 +1,16 @@
+bool cursor_visible = true;
+
 void
 libsuckterm_cb_bell(void) {
 	if(!(xw.state & WIN_FOCUSED))
 		libsuckterm_cb_set_urgency(1);
 	if (bellvolume)
 		XBell(xw.dpy, bellvolume);
+}
+
+void
+libsuckterm_cb_set_cursor_visibility(bool visible) {
+	cursor_visible = visible;
 }
 
 void

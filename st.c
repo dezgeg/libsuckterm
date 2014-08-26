@@ -122,7 +122,7 @@ enum term_mode {
 	MODE_MOUSEMOTION = 64,
 	MODE_REVERSE     = 128,
 	MODE_KBDLOCK     = 256,
-	MODE_HIDE        = 512,
+	/* MODE_HIDE deleted */
 	MODE_ECHO        = 1024,
 	MODE_APPCURSOR   = 2048,
 	MODE_MOUSESGR    = 4096,
@@ -278,9 +278,10 @@ typedef struct {
 
 // Start callbacks
 static void libsuckterm_cb_bell(void);
-static void libsuckterm_cb_set_title(char *);
 static void libsuckterm_cb_reset_title(void);
+static void libsuckterm_cb_set_cursor_visibility(bool);
 static void libsuckterm_cb_set_pointer_motion(int);
+static void libsuckterm_cb_set_title(char *);
 static void libsuckterm_cb_set_urgency(int);
 // End callbacks
 
@@ -994,7 +995,7 @@ tsetmode(bool priv, bool set, int *args, int narg) {
 			case 12: /* att610 -- Start blinking cursor (IGNORED) */
 				break;
 			case 25: /* DECTCEM -- Text Cursor Enable Mode */
-				MODBIT(term.mode, !set, MODE_HIDE);
+				libsuckterm_cb_set_cursor_visibility(set);
 				break;
 			case 9:    /* X10 mouse compatibility mode */
 				libsuckterm_cb_set_pointer_motion(0);

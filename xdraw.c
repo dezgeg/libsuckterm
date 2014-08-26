@@ -427,7 +427,7 @@ xdrawcursor(void) {
 			oldy, width, sl);
 
 	/* draw the new one */
-	if(!(IS_SET(MODE_HIDE))) {
+	if(cursor_visible) {
 		if(xw.state & WIN_FOCUSED) {
 			if(IS_SET(MODE_REVERSE)) {
 				g.mode |= ATTR_REVERSE;
