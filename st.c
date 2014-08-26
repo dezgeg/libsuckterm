@@ -392,26 +392,6 @@ static char *opt_class = NULL;
 static char *opt_font = NULL;
 static int oldbutton = 3; /* button event on startup: 3 = release */
 
-static char *usedfont = NULL;
-static int usedfontsize = 0;
-
-/* Font Ring Cache */
-enum {
-	FRC_NORMAL,
-	FRC_ITALIC,
-	FRC_BOLD,
-	FRC_ITALICBOLD
-};
-
-typedef struct {
-	XftFont *font;
-	int flags;
-} Fontcache;
-
-/* Fontcache is an array now. A new font will be appended to the array. */
-static Fontcache frc[16];
-static int frclen = 0;
-
 #include "helpers.c"
 
 static int
@@ -1761,8 +1741,8 @@ tresize(int col, int row) {
 }
 
 #include "xcallback.c"
-#include "xinit.c"
 #include "xdraw.c"
+#include "xinit.c"
 #include "xevent.c"
 
 void
