@@ -120,7 +120,7 @@ enum term_mode {
 	MODE_CRLF        = 16,
 	MODE_MOUSEBTN    = 32,
 	MODE_MOUSEMOTION = 64,
-	MODE_REVERSE     = 128,
+	/* MODE_REVERSE deleted */
 	MODE_KBDLOCK     = 256,
 	/* MODE_HIDE deleted */
 	MODE_ECHO        = 1024,
@@ -280,6 +280,7 @@ typedef struct {
 static void libsuckterm_cb_bell(void);
 static void libsuckterm_cb_reset_title(void);
 static void libsuckterm_cb_set_cursor_visibility(bool);
+static void libsuckterm_cb_set_reverse_video(bool);
 static void libsuckterm_cb_set_pointer_motion(int);
 static void libsuckterm_cb_set_title(char *);
 static void libsuckterm_cb_set_urgency(int);
@@ -961,7 +962,7 @@ tsetscroll(int t, int b) {
 
 void
 tsetmode(bool priv, bool set, int *args, int narg) {
-	int *lim, mode;
+	int *lim;
 	bool alt;
 
 	for(lim = args + narg; args < lim; ++args) {
@@ -972,10 +973,7 @@ tsetmode(bool priv, bool set, int *args, int narg) {
 				MODBIT(term.mode, set, MODE_APPCURSOR);
 				break;
 			case 5: /* DECSCNM -- Reverse video */
-				mode = term.mode;
-				MODBIT(term.mode, set, MODE_REVERSE);
-				if(mode != term.mode)
-					redraw(REDRAW_TIMEOUT);
+				libsuckterm_cb_set_reverse_video(set);
 				break;
 			case 6: /* DECOM -- Origin */
 				MODBIT(term.c.state, set, CURSOR_ORIGIN);

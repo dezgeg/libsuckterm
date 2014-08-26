@@ -116,7 +116,7 @@ xsetcolorname(int x, const char *name) {
 void
 xtermclear(int col1, int row1, int col2, int row2) {
 	XftDrawRect(xw.draw,
-			&dc.col[IS_SET(MODE_REVERSE) ? defaultfg : defaultbg],
+			&dc.col[reverse_video ? defaultfg : defaultbg],
 			borderpx + col1 * xw.cw,
 			borderpx + row1 * xw.ch,
 			(col2-col1+1) * xw.cw,
@@ -129,7 +129,7 @@ xtermclear(int col1, int row1, int col2, int row2) {
 void
 xclear(int x1, int y1, int x2, int y2) {
 	XftDrawRect(xw.draw,
-			&dc.col[IS_SET(MODE_REVERSE)? defaultfg : defaultbg],
+			&dc.col[reverse_video ? defaultfg : defaultbg],
 			x1, y1, x2-x1, y2-y1);
 }
 
@@ -219,7 +219,7 @@ xdraws(char *s, Glyph base, int x, int y, int charlen, int bytelen) {
 		frcflags = FRC_BOLD;
 	}
 
-	if(IS_SET(MODE_REVERSE)) {
+	if(reverse_video) {
 		if(fg == &dc.col[defaultfg]) {
 			fg = &dc.col[defaultbg];
 		} else {
@@ -429,7 +429,7 @@ xdrawcursor(void) {
 	/* draw the new one */
 	if(cursor_visible) {
 		if(xw.state & WIN_FOCUSED) {
-			if(IS_SET(MODE_REVERSE)) {
+			if(reverse_video) {
 				g.mode |= ATTR_REVERSE;
 				g.fg = defaultcs;
 				g.bg = defaultfg;
@@ -480,7 +480,7 @@ draw(void) {
 	XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, xw.w,
 			xw.h, 0, 0);
 	XSetForeground(xw.dpy, dc.gc,
-			dc.col[IS_SET(MODE_REVERSE)?
+			dc.col[reverse_video ?
 				defaultfg : defaultbg].pixel);
 }
 

@@ -1,4 +1,5 @@
 bool cursor_visible = true;
+bool reverse_video = false;
 
 void
 libsuckterm_cb_bell(void) {
@@ -11,6 +12,15 @@ libsuckterm_cb_bell(void) {
 void
 libsuckterm_cb_set_cursor_visibility(bool visible) {
 	cursor_visible = visible;
+}
+
+void
+libsuckterm_cb_set_reverse_video(bool enable) {
+	bool do_redraw = reverse_video != enable;
+
+	reverse_video = enable;
+	if (do_redraw)
+		redraw(REDRAW_TIMEOUT);
 }
 
 void
