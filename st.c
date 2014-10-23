@@ -1063,9 +1063,6 @@ void tsetmode(bool priv, bool set, int* args, int narg) {
                     tcursor((set) ? CURSOR_SAVE : CURSOR_LOAD);
                 case 47: /* swap screen */
                 case 1047:
-                    if (!allowaltscreen) {
-                        break;
-                    }
                     alt = IS_SET(MODE_ALTSCREEN);
                     if (alt) {
                         tclearregion(0, 0, term.col - 1,
@@ -1901,9 +1898,6 @@ int main(int argc, char* argv[]) {
     char* titles;
 
     ARGBEGIN {
-                case 'a':
-                    allowaltscreen = false;
-                    break;
                 case 'c':
                     opt_class = EARGF(usage());
                     break;
