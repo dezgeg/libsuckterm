@@ -122,6 +122,11 @@ int libsuckterm_cb_set_color(int x, const char* name);
 
 void libsuckterm_set_size(int col, int row, int cw, int ch);
 
+static inline int libsuckterm_get_cols() { return term.col; }
+static inline int libsuckterm_get_rows() { return term.row; }
+static inline int libsuckterm_get_cursor_x() { return term.c.x; }
+static inline int libsuckterm_get_cursor_y() { return term.c.y; }
+
 void tnew(int col, int row, unsigned int defaultfg, unsigned int defaultbg, unsigned int tabspaces);
 void tfulldirt(void);
 

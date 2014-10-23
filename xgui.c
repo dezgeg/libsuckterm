@@ -201,14 +201,14 @@ static int x2col(int x) {
     x -= borderpx;
     x /= xw.cw;
 
-    return LIMIT(x, 0, term.col - 1);
+    return LIMIT(x, 0, libsuckterm_get_cols() - 1);
 }
 
 static int y2row(int y) {
     y -= borderpx;
     y /= xw.ch;
 
-    return LIMIT(y, 0, term.row - 1);
+    return LIMIT(y, 0, libsuckterm_get_rows() - 1);
 }
 
 void mousereport(XEvent* e) {
@@ -520,16 +520,16 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
     /* Intelligent cleaning up of the borders. */
     if (x == 0) {
         xclear(0, (y == 0) ? 0 : winy, borderpx,
-                winy + xw.ch + ((y >= term.row - 1) ? xw.h : 0));
+                winy + xw.ch + ((y >= libsuckterm_get_rows() - 1) ? xw.h : 0));
     }
-    if (x + charlen >= term.col) {
+    if (x + charlen >= libsuckterm_get_cols()) {
         xclear(winx + width, (y == 0) ? 0 : winy, xw.w,
-                ((y >= term.row - 1) ? xw.h : (winy + xw.ch)));
+                ((y >= libsuckterm_get_rows() - 1) ? xw.h : (winy + xw.ch)));
     }
     if (y == 0) {
         xclear(winx, 0, winx + width, borderpx);
     }
-    if (y == term.row - 1) {
+    if (y == libsuckterm_get_rows() - 1) {
         xclear(winx, winy + xw.ch, winx + width, xw.h);
     }
 
@@ -671,20 +671,20 @@ void xdrawcursor(void) {
     int sl, width, curx;
     Cell g = { { ' ' }, ATTR_NULL, defaultbg, defaultcs };
 
-    LIMIT(oldx, 0, term.col - 1);
-    LIMIT(oldy, 0, term.row - 1);
+    LIMIT(oldx, 0, libsuckterm_get_cols() - 1);
+    LIMIT(oldy, 0, libsuckterm_get_rows() - 1);
 
-    curx = term.c.x;
+    curx = libsuckterm_get_cursor_x();
 
     /* adjust position if in dummy */
     if (term.line[oldy][oldx].mode & ATTR_WDUMMY) {
         oldx--;
     }
-    if (term.line[term.c.y][curx].mode & ATTR_WDUMMY) {
+    if (term.line[libsuckterm_get_cursor_y()][curx].mode & ATTR_WDUMMY) {
         curx--;
     }
 
-    memcpy(g.c, term.line[term.c.y][term.c.x].c, UTF_SIZ);
+    memcpy(g.c, term.line[libsuckterm_get_cursor_y()][libsuckterm_get_cursor_x()].c, UTF_SIZ);
 
     /* remove the old cursor */
     sl = utf8size(term.line[oldy][oldx].c);
@@ -702,27 +702,27 @@ void xdrawcursor(void) {
             }
 
             sl = utf8size(g.c);
-            width = (term.line[term.c.y][curx].mode & ATTR_WIDE) ? 2 : 1;
-            xdraws(g.c, g, term.c.x, term.c.y, width, sl);
+            width = (term.line[libsuckterm_get_cursor_y()][curx].mode & ATTR_WIDE) ? 2 : 1;
+            xdraws(g.c, g, libsuckterm_get_cursor_x(), libsuckterm_get_cursor_y(), width, sl);
         } else {
             XftDrawRect(xw.draw, &dc.col[defaultcs],
                     borderpx + curx * xw.cw,
-                    borderpx + term.c.y * xw.ch,
+                    borderpx + libsuckterm_get_cursor_y() * xw.ch,
                     xw.cw - 1, 1);
             XftDrawRect(xw.draw, &dc.col[defaultcs],
                     borderpx + curx * xw.cw,
-                    borderpx + term.c.y * xw.ch,
+                    borderpx + libsuckterm_get_cursor_y() * xw.ch,
                     1, xw.ch - 1);
             XftDrawRect(xw.draw, &dc.col[defaultcs],
                     borderpx + (curx + 1) * xw.cw - 1,
-                    borderpx + term.c.y * xw.ch,
+                    borderpx + libsuckterm_get_cursor_y() * xw.ch,
                     1, xw.ch - 1);
             XftDrawRect(xw.draw, &dc.col[defaultcs],
                     borderpx + curx * xw.cw,
-                    borderpx + (term.c.y + 1) * xw.ch - 1,
+                    borderpx + (libsuckterm_get_cursor_y() + 1) * xw.ch - 1,
                     xw.cw, 1);
         }
-        oldx = curx, oldy = term.c.y;
+        oldx = curx, oldy = libsuckterm_get_cursor_y();
     }
 }
 
@@ -739,7 +739,7 @@ void redraw(int timeout) {
 }
 
 void draw(void) {
-    drawregion(0, 0, term.col, term.row);
+    drawregion(0, 0, libsuckterm_get_cols(), libsuckterm_get_rows());
     XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, xw.w,
             xw.h, 0, 0);
     XSetForeground(xw.dpy, dc.gc,
@@ -762,7 +762,7 @@ void drawregion(int x1, int y1, int x2, int y2) {
             continue;
         }
 
-        xtermclear(0, y, term.col, y);
+        xtermclear(0, y, libsuckterm_get_cols(), y);
         term.dirty[y] = 0;
         base = term.line[y][0];
         ic = ib = ox = 0;
@@ -932,8 +932,8 @@ void xinit(void) {
     xloadcols();
 
     /* window - default size */
-    xw.h = 2 * borderpx + term.row * xw.ch;
-    xw.w = 2 * borderpx + term.col * xw.cw;
+    xw.h = 2 * borderpx + libsuckterm_get_rows() * xw.ch;
+    xw.w = 2 * borderpx + libsuckterm_get_cols() * xw.cw;
 
     /* Events */
     xw.attrs.background_pixel = dc.col[defaultbg].pixel;
@@ -1251,7 +1251,7 @@ void run(void) {
     }
 
     xsetsize(w, h);
-    cmdfd = ttynew(term.row, term.col, xw.win, opt_cmd, shell, termname);
+    cmdfd = ttynew(libsuckterm_get_rows(), libsuckterm_get_cols(), xw.win, opt_cmd, shell, termname);
 
     gettimeofday(&last, NULL);
 
