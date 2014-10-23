@@ -3,7 +3,7 @@
 
 include config.mk
 
-SRC = st.c
+SRC = helpers.c ptyutils.c st.c
 OBJ = ${SRC:.c=.o}
 
 all: options st
@@ -21,7 +21,7 @@ config.h:
 	@echo CC $<
 	@${CC} -c ${CFLAGS} $<
 
-${OBJ}: config.h config.mk
+${OBJ}: config.h config.mk arg.h helpers.h  ptyutils.h  xcallback.h  xdraw.h  xevent.h  xinit.h
 
 st: ${OBJ}
 	@echo CC -o $@

@@ -14,7 +14,9 @@ set(SOURCE_FILES
     arg.h
     config.h
     helpers.h
+    helpers.c
     ptyutils.h
+    ptyutils.c
     xcallback.h
     xdraw.h
     xevent.h

@@ -1,4 +1,7 @@
 /* See LICENSE file for copyright and license details. */
+#include <stdbool.h>
+#include <X11/keysym.h>
+#include <X11/Xlib.h>
 
 /*
  * appearance

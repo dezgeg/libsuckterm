@@ -30,6 +30,7 @@
 #include <wchar.h>
 
 #include "arg.h"
+#include "helpers.h"
 
 char* argv0;
 
@@ -69,13 +70,6 @@ char* argv0;
 #define REDRAW_TIMEOUT (80*1000) /* 80 ms */
 
 /* macros */
-#define SERRNO strerror(errno)
-#define MIN(a, b)  ((a) < (b) ? (a) : (b))
-#define MAX(a, b)  ((a) < (b) ? (b) : (a))
-#define LEN(a)     (sizeof(a) / sizeof(a[0]))
-#define DEFAULT(a, b)     (a) = (a) ? (a) : (b)
-#define BETWEEN(x, a, b)  ((a) <= (x) && (x) <= (b))
-#define LIMIT(x, a, b)    (x) = (x) < (a) ? (a) : (x) > (b) ? (b) : (x)
 #define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg != (b).fg || (a).bg != (b).bg)
 #define IS_SET(flag) ((term.mode & (flag)) != 0)
 #define TIMEDIFF(t1, t2) ((t1.tv_sec-t2.tv_sec)*1000 + (t1.tv_usec-t2.tv_usec)/1000)
@@ -162,11 +156,6 @@ enum window_state {
     WIN_REDRAW = 2,
     WIN_FOCUSED = 4
 };
-
-typedef unsigned char uchar;
-typedef unsigned int uint;
-typedef unsigned long ulong;
-typedef unsigned short ushort;
 
 typedef struct {
     char c[UTF_SIZ];
@@ -320,10 +309,6 @@ static void libsuckterm_set_size(int col, int row, int cw, int ch);
 // End exports
 
 // pty.c
-static void execsh(void);
-static void sigchld(int);
-static void ttynew(void);
-
 static void ttyread(void);
 static void ttyresize(void);
 static void ttysend(char*, size_t);
@@ -394,20 +379,6 @@ static void bmotion(XEvent*);
 static char* kmap(KeySym, uint);
 static void xsetsize(int, int);
 
-// helpers.c
-static int utf8decode(char*, long*);
-static int utf8encode(long*, char*);
-static int utf8size(char*);
-static int isfullutf8(char*, int);
-
-static ssize_t xwrite(int, const char*, size_t);
-static void* xmalloc(size_t);
-static void* xrealloc(void*, size_t);
-static void die(const char*, ...);
-
-static void csidump(void);
-static void strdump(void);
-
 /* Globals */
 static DC dc;
 static XWindow xw;
@@ -415,7 +386,6 @@ static Term term;
 static CSIEscape csiescseq;
 static STREscape strescseq;
 static int cmdfd;
-static pid_t pid;
 static char** opt_cmd = NULL;
 static char* opt_title = NULL;
 static char* opt_embed = NULL;
@@ -423,7 +393,52 @@ static char* opt_class = NULL;
 static char* opt_font = NULL;
 static int oldbutton = 3; /* button event on startup: 3 = release */
 
-#include "helpers.h"
+static void csidump(void) {
+    int i;
+    uint c;
+
+    fprintf(stderr, "ESC[");
+    for (i = 0; i < csiescseq.len; i++) {
+        c = csiescseq.buf[i] & 0xff;
+        if (isprint(c)) {
+            fputc(c, stderr);
+        } else if (c == '\n') {
+            fprintf(stderr, "(\\n)");
+        } else if (c == '\r') {
+            fprintf(stderr, "(\\r)");
+        } else if (c == 0x1b) {
+            fprintf(stderr, "(\\e)");
+        } else {
+            fprintf(stderr, "(%02x)", c);
+        }
+    }
+    fputc('\n', stderr);
+}
+
+static void strdump(void) {
+    int i;
+    uint c;
+
+    fprintf(stderr, "ESC%c", strescseq.type);
+    for (i = 0; i < strescseq.len; i++) {
+        c = strescseq.buf[i] & 0xff;
+        if (c == '\0') {
+            return;
+        } else if (isprint(c)) {
+            fputc(c, stderr);
+        } else if (c == '\n') {
+            fprintf(stderr, "(\\n)");
+        } else if (c == '\r') {
+            fprintf(stderr, "(\\r)");
+        } else if (c == 0x1b) {
+            fprintf(stderr, "(\\e)");
+        } else {
+            fprintf(stderr, "(%02x)", c);
+        }
+    }
+    fprintf(stderr, "ESC\\\n");
+}
+
 
 static int x2col(int x) {
     x -= borderpx;
@@ -1817,7 +1832,7 @@ void run(void) {
     }
 
     xsetsize(w, h);
-    ttynew();
+    cmdfd = ttynew(term.row, term.col, xw.win, opt_cmd, shell, termname);
 
     gettimeofday(&last, NULL);
 
