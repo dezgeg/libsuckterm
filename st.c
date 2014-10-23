@@ -29,21 +29,14 @@
 #include <fontconfig/fontconfig.h>
 #include <wchar.h>
 
-#include "arg.h"
 #include "helpers.h"
+#include "libsuckterm.h"
 
 char* argv0;
 
-#define Glyph Glyph_
-#define Font Font_
-#define Draw XftDraw *
-#define Colour XftColor
-#define Colourmap Colormap
-#define Rectangle XRectangle
+#if defined(__linux)
 
-#if   defined(__linux)
-
-#include <pty.h>
+# include <pty.h>
 
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
  #include <util.h>
@@ -52,49 +45,15 @@ char* argv0;
 #endif
 
 
-/* XEMBED messages */
-#define XEMBED_FOCUS_IN  4
-#define XEMBED_FOCUS_OUT 5
-
 /* Arbitrary sizes */
-#define UTF_SIZ       4
 #define ESC_BUF_SIZ   (128*UTF_SIZ)
 #define ESC_ARG_SIZ   16
 #define STR_BUF_SIZ   ESC_BUF_SIZ
 #define STR_ARG_SIZ   ESC_ARG_SIZ
-#define DRAW_BUF_SIZ  20*1024
-#define XK_ANY_MOD    UINT_MAX
-#define XK_NO_MOD     0
-#define XK_SWITCH_MOD (1<<13)
 
-#define REDRAW_TIMEOUT (80*1000) /* 80 ms */
 
 /* macros */
-#define ATTRCMP(a, b) ((a).mode != (b).mode || (a).fg != (b).fg || (a).bg != (b).bg)
-#define IS_SET(flag) ((term.mode & (flag)) != 0)
-#define TIMEDIFF(t1, t2) ((t1.tv_sec-t2.tv_sec)*1000 + (t1.tv_usec-t2.tv_usec)/1000)
-#define CEIL(x) (((x) != (int) (x)) ? (x) + 1 : (x))
-
-#define TRUECOLOR(r, g, b) (1 << 24 | (r) << 16 | (g) << 8 | (b))
-#define IS_TRUECOL(x)    (1 << 24 & (x))
-#define TRUERED(x)       (((x) & 0xff0000) >> 8)
-#define TRUEGREEN(x)     (((x) & 0xff00))
-#define TRUEBLUE(x)      (((x) & 0xff) << 8)
-
 #define VT102ID "\033[?6c"
-
-enum glyph_attribute {
-    ATTR_NULL = 0,
-    ATTR_REVERSE = 1,
-    ATTR_UNDERLINE = 2,
-    ATTR_BOLD = 4,
-    ATTR_GFX = 8,
-    ATTR_ITALIC = 16,
-    ATTR_BLINK = 32,
-    ATTR_WRAP = 64,
-    ATTR_WIDE = 128,
-    ATTR_WDUMMY = 256,
-};
 
 enum cursor_movement {
     CURSOR_SAVE,
@@ -105,31 +64,6 @@ enum cursor_state {
     CURSOR_DEFAULT = 0,
     CURSOR_WRAPNEXT = 1,
     CURSOR_ORIGIN = 2
-};
-
-enum term_mode {
-    MODE_WRAP = 1,
-    MODE_INSERT = 2,
-    MODE_APPKEYPAD = 4,
-    MODE_ALTSCREEN = 8,
-    MODE_CRLF = 16,
-    MODE_MOUSEBTN = 32,
-    MODE_MOUSEMOTION = 64,
-    /* MODE_REVERSE deleted */
-            MODE_KBDLOCK = 256,
-    /* MODE_HIDE deleted */
-            MODE_ECHO = 1024,
-    MODE_APPCURSOR = 2048,
-    MODE_MOUSESGR = 4096,
-    MODE_8BIT = 8192,
-    MODE_BLINK = 16384,
-    MODE_FBLINK = 32768,
-    MODE_FOCUS = 65536,
-    MODE_MOUSEX10 = 131072,
-    MODE_MOUSEMANY = 262144,
-    MODE_BRCKTPASTE = 524288,
-    MODE_MOUSE = MODE_MOUSEBTN | MODE_MOUSEMOTION | MODE_MOUSEX10\
- | MODE_MOUSEMANY,
 };
 
 enum charset {
@@ -150,32 +84,6 @@ enum escape_state {
     ESC_STR_END = 16, /* a final string was encountered */
             ESC_TEST = 32, /* Enter in test mode */
 };
-
-enum window_state {
-    WIN_VISIBLE = 1,
-    WIN_REDRAW = 2,
-    WIN_FOCUSED = 4
-};
-
-typedef struct {
-    char c[UTF_SIZ];
-    /* character code */
-    ushort mode;
-    /* attribute flags */
-    ulong fg;
-    /* foreground  */
-    ulong bg;        /* background  */
-} Glyph;
-
-typedef Glyph* Line;
-
-typedef struct {
-    Glyph attr;
-    /* current char attributes */
-    int x;
-    int y;
-    char state;
-} TCursor;
 
 /* CSI Escape sequence structs */
 /* ESC '[' [[ [<priv>] <arg> [;]] <mode>] */
@@ -204,120 +112,7 @@ typedef struct {
     int narg;              /* nb of args */
 } STREscape;
 
-/* Internal representation of the screen */
-typedef struct {
-    int row;
-    /* nb row */
-    int col;
-    /* nb col */
-    int tw, th;
-    /* tty width and height in pixels, for TIOCSWINSZ */
-    Line* line;
-    /* screen */
-    Line* alt;    /* alternate screen */
-    bool* dirty;
-    /* dirtyness of lines */
-    TCursor c;
-    /* cursor */
-    int top;
-    /* top    scroll limit */
-    int bot;
-    /* bottom scroll limit */
-    int mode;
-    /* terminal mode flags */
-    int esc;
-    /* escape state flags */
-    char trantbl[4];
-    /* charset table translation */
-    int charset;
-    /* current charset */
-    int icharset; /* selected charset for sequence */
-    bool* tabs;
-} Term;
-
-/* Purely graphic info */
-typedef struct {
-    Display* dpy;
-    Colourmap cmap;
-    Window win;
-    Drawable buf;
-    Atom xembed, wmdeletewin;
-    XIM xim;
-    XIC xic;
-    Draw draw;
-    Visual* vis;
-    XSetWindowAttributes attrs;
-    int scr;
-    int tw, th;
-    /* tty width and height */
-    int w, h;
-    /* window width and height */
-    int ch;
-    /* char height */
-    int cw;
-    /* char width  */
-    char state; /* focus, redraw, visible */
-} XWindow;
-
-typedef struct {
-    KeySym k;
-    uint mask;
-    char* s;
-    /* three valued logic variables: 0 indifferent, 1 on, -1 off */
-    signed char appkey;
-    /* application keypad */
-    signed char appcursor;
-    /* application cursor */
-    signed char crlf;      /* crlf mode          */
-} Key;
-
-/* Config.h for applying patches and the configuration. */
-#include "config.h"
-
-/* Font structure */
-typedef struct {
-    int height;
-    int width;
-    int ascent;
-    int descent;
-    short lbearing;
-    short rbearing;
-    XftFont* match;
-    FcFontSet* set;
-    FcPattern* pattern;
-} Font;
-
-/* Drawing Context */
-typedef struct {
-    Colour col[LEN(colorname) < 256 ? 256 : LEN(colorname)];
-    Font font, bfont, ifont, ibfont;
-    GC gc;
-} DC;
-
-// Start callbacks
-static void libsuckterm_cb_bell(void);
-static void libsuckterm_cb_reset_title(void);
-static void libsuckterm_cb_set_cursor_visibility(bool);
-static void libsuckterm_cb_set_reverse_video(bool);
-static void libsuckterm_cb_set_pointer_motion(int);
-static void libsuckterm_cb_set_title(char*);
-static void libsuckterm_cb_set_urgency(int);
-// End callbacks
-
-// Start exports
-static void libsuckterm_set_size(int col, int row, int cw, int ch);
-// End exports
-
 // pty.c
-static void ttyread(void);
-static void ttyresize(void);
-static void ttysend(char*, size_t);
-static void ttywrite(const char*, size_t);
-
-static void draw(void);
-static void redraw(int);
-static void drawregion(int, int, int, int);
-static void run(void);
 
 static void csihandle(void);
 static void csiparse(void);
@@ -334,64 +129,29 @@ static void tinsertblank(int);
 static void tinsertblankline(int);
 static void tmoveto(int, int);
 static void tmoveato(int x, int y);
-static void tnew(int, int);
 static void tnewline(int);
 static void tputtab(bool);
 static void tputc(char*, int);
-static void treset(void);
+static void treset();
 static int tresize(int, int);
 static void tscrollup(int, int);
 static void tscrolldown(int, int);
-static void tsetchar(char*, Glyph*, int, int);
+static void tsetchar(char*, Cell*, int, int);
 static void tsetscroll(int, int);
 static void tswapscreen(void);
 static void tsetdirt(int, int);
 static void tsetmode(bool, bool, int*, int);
-static void tfulldirt(void);
 static void techo(char*, int);
 static long tdefcolor(int*, int*, int);
 static void tselcs(void);
 static void tdeftran(char);
-static inline bool match(uint, uint);
-
-static void xdraws(char*, Glyph, int, int, int, int);
-static void xhints(void);
-static void xclear(int, int, int, int);
-static void xdrawcursor(void);
-static void xinit(void);
-static void xloadcols(void);
-static int xsetcolorname(int, const char*);
-static int xloadfontset(Font*);
-static void xtermclear(int, int, int, int);
-static void xresize(int, int);
-
-static void expose(XEvent*);
-static void visibility(XEvent*);
-static void unmap(XEvent*);
-static void kpress(XEvent*);
-static void cmessage(XEvent*);
-static void resize(XEvent*);
-static void focus(XEvent*);
-static void brelease(XEvent*);
-static void bpress(XEvent*);
-static void bmotion(XEvent*);
-
-static char* kmap(KeySym, uint);
-static void xsetsize(int, int);
 
 /* Globals */
-static DC dc;
-static XWindow xw;
-static Term term;
+Term term;
 static CSIEscape csiescseq;
 static STREscape strescseq;
-static int cmdfd;
-static char** opt_cmd = NULL;
-static char* opt_title = NULL;
-static char* opt_embed = NULL;
-static char* opt_class = NULL;
-static char* opt_font = NULL;
-static int oldbutton = 3; /* button event on startup: 3 = release */
+int cmdfd;
+/* button event on startup: 3 = release */
 
 static void csidump(void) {
     int i;
@@ -437,87 +197,6 @@ static void strdump(void) {
         }
     }
     fprintf(stderr, "ESC\\\n");
-}
-
-
-static int x2col(int x) {
-    x -= borderpx;
-    x /= xw.cw;
-
-    return LIMIT(x, 0, term.col - 1);
-}
-
-static int y2row(int y) {
-    y -= borderpx;
-    y /= xw.ch;
-
-    return LIMIT(y, 0, term.row - 1);
-}
-
-void mousereport(XEvent* e) {
-    int x = x2col(e->xbutton.x), y = y2row(e->xbutton.y),
-            button = e->xbutton.button, state = e->xbutton.state,
-            len;
-    char buf[40];
-    static int ox, oy;
-
-    /* from urxvt */
-    if (e->xbutton.type == MotionNotify) {
-        if (x == ox && y == oy) {
-            return;
-        }
-        if (!IS_SET(MODE_MOUSEMOTION) && !IS_SET(MODE_MOUSEMANY)) {
-            return;
-        }
-        /* MOUSE_MOTION: no reporting if no button is pressed */
-        if (IS_SET(MODE_MOUSEMOTION) && oldbutton == 3) {
-            return;
-        }
-
-        button = oldbutton + 32;
-        ox = x;
-        oy = y;
-    } else {
-        if (!IS_SET(MODE_MOUSESGR) && e->xbutton.type == ButtonRelease) {
-            button = 3;
-        } else {
-            button -= Button1;
-            if (button >= 3) {
-                button += 64 - 3;
-            }
-        }
-        if (e->xbutton.type == ButtonPress) {
-            oldbutton = button;
-            ox = x;
-            oy = y;
-        } else if (e->xbutton.type == ButtonRelease) {
-            oldbutton = 3;
-            /* MODE_MOUSEX10: no button release reporting */
-            if (IS_SET(MODE_MOUSEX10)) {
-                return;
-            }
-        }
-    }
-
-    if (!IS_SET(MODE_MOUSEX10)) {
-        button += (state & ShiftMask ? 4 : 0)
-                + (state & Mod4Mask ? 8 : 0)
-                + (state & ControlMask ? 16 : 0);
-    }
-
-    len = 0;
-    if (IS_SET(MODE_MOUSESGR)) {
-        len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c",
-                button, x + 1, y + 1,
-                e->xbutton.type == ButtonRelease ? 'm' : 'M');
-    } else if (x < 223 && y < 223) {
-        len = snprintf(buf, sizeof(buf), "\033[M%c%c%c",
-                32 + button, 32 + x + 1, 32 + y + 1);
-    } else {
-        return;
-    }
-
-    ttywrite(buf, len);
 }
 
 #include "ptyutils.h"
@@ -603,17 +282,17 @@ void tcursor(int mode) {
     }
 }
 
-void treset(void) {
+void treset() {
     uint i;
 
     term.c = (TCursor){ {
             .mode = ATTR_NULL,
-            .fg = defaultfg,
-            .bg = defaultbg
+            .fg = term.defaultfg,
+            .bg = term.defaultbg,
     }, .x = 0, .y = 0, .state = CURSOR_DEFAULT };
 
     memset(term.tabs, 0, term.col * sizeof(*term.tabs));
-    for (i = tabspaces; i < term.col; i += tabspaces) {
+    for (i = term.tabspaces; i < term.col; i += term.tabspaces) {
         term.tabs[i] = 1;
     }
     term.top = 0;
@@ -627,10 +306,14 @@ void treset(void) {
     tcursor(CURSOR_SAVE);
 }
 
-void tnew(int col, int row) {
-    term = (Term){ .c = { .attr = { .fg = defaultfg, .bg = defaultbg } } };
+void tnew(int col, int row, unsigned int defaultfg, unsigned int defaultbg, unsigned int tabspaces) {
+    term = (Term){
+            .defaultfg = defaultfg,
+            .defaultbg = defaultbg,
+            .tabspaces = tabspaces,
+            .c = { .attr = { .fg = defaultfg, .bg = defaultbg, }, },
+    };
     tresize(col, row);
-
     treset();
 }
 
@@ -741,7 +424,7 @@ void tmoveto(int x, int y) {
     term.c.y = y;
 }
 
-void tsetchar(char* c, Glyph* attr, int x, int y) {
+void tsetchar(char* c, Cell* attr, int x, int y) {
     static char* vt100_0[62] = { /* 0x41 - 0x7e */
             "↑", "↓", "→", "←", "█", "▚", "☃", /* A - G */
             0, 0, 0, 0, 0, 0, 0, 0, /* H - O */
@@ -815,7 +498,7 @@ void tdeletechar(int n) {
     }
 
     memmove(&term.line[term.c.y][dst], &term.line[term.c.y][src],
-            size * sizeof(Glyph));
+            size * sizeof(Cell));
     tclearregion(term.col - n, term.c.y, term.col - 1, term.c.y);
 }
 
@@ -832,7 +515,7 @@ void tinsertblank(int n) {
     }
 
     memmove(&term.line[term.c.y][dst], &term.line[term.c.y][src],
-            size * sizeof(Glyph));
+            size * sizeof(Cell));
     tclearregion(src, term.c.y, dst - 1, term.c.y);
 }
 
@@ -909,8 +592,8 @@ void tsetattr(int* attr, int l) {
         switch (attr[i]) {
             case 0:
                 term.c.attr.mode &= ~(ATTR_REVERSE | ATTR_UNDERLINE | ATTR_BOLD | ATTR_ITALIC | ATTR_BLINK);
-                term.c.attr.fg = defaultfg;
-                term.c.attr.bg = defaultbg;
+                term.c.attr.fg = term.defaultfg;
+                term.c.attr.bg = term.defaultbg;
                 break;
             case 1:
                 term.c.attr.mode |= ATTR_BOLD;
@@ -951,7 +634,7 @@ void tsetattr(int* attr, int l) {
                 }
                 break;
             case 39:
-                term.c.attr.fg = defaultfg;
+                term.c.attr.fg = term.defaultfg;
                 break;
             case 48:
                 if ((idx = tdefcolor(attr, &i, l)) >= 0) {
@@ -959,7 +642,7 @@ void tsetattr(int* attr, int l) {
                 }
                 break;
             case 49:
-                term.c.attr.bg = defaultbg;
+                term.c.attr.bg = term.defaultbg;
                 break;
             default:
                 if (BETWEEN(attr[i], 30, 37)) {
@@ -993,8 +676,6 @@ void tsetscroll(int t, int b) {
     term.top = t;
     term.bot = b;
 }
-
-#define MODBIT(x, set, bit) ((set) ? ((x) |= (bit)) : ((x) &= ~(bit)))
 
 void tsetmode(bool priv, bool set, int* args, int narg) {
     int* lim;
@@ -1332,14 +1013,8 @@ void strhandle(void) {
                     /* fall through */
                 case 104: /* color reset, here p = NULL */
                     j = (narg > 1) ? atoi(strescseq.args[1]) : -1;
-                    if (!xsetcolorname(j, p)) {
+                    if (!libsuckterm_cb_set_color(j, p)) {
                         fprintf(stderr, "erresc: invalid color %s\n", p);
-                    } else {
-                        /*
-                         * TODO if defaultbg color is changed, borders
-                         * are dirty
-                         */
-                        redraw(0);
                     }
                     break;
                 default:
@@ -1628,7 +1303,7 @@ void tputc(char* c, int len) {
                     treset();
                     term.esc = 0;
                     libsuckterm_cb_reset_title();
-                    xloadcols();
+                    libsuckterm_cb_reset_colors();
                     break;
                 case '=': /* DECPAM -- Application keypad */
                     term.mode |= MODE_APPKEYPAD;
@@ -1675,7 +1350,7 @@ void tputc(char* c, int len) {
     if (IS_SET(MODE_INSERT) && term.c.x + 1 < term.col) {
         memmove(&term.line[term.c.y][term.c.x + 1],
                 &term.line[term.c.y][term.c.x],
-                (term.col - term.c.x - 1) * sizeof(Glyph));
+                (term.col - term.c.x - 1) * sizeof(Cell));
     }
 
     if (term.c.x + width > term.col) {
@@ -1739,15 +1414,15 @@ int tresize(int col, int row) {
     /* resize each row to new width, zero-pad if needed */
     for (i = 0; i < minrow; i++) {
         term.dirty[i] = 1;
-        term.line[i] = xrealloc(term.line[i], col * sizeof(Glyph));
-        term.alt[i] = xrealloc(term.alt[i], col * sizeof(Glyph));
+        term.line[i] = xrealloc(term.line[i], col * sizeof(Cell));
+        term.alt[i] = xrealloc(term.alt[i], col * sizeof(Cell));
     }
 
     /* allocate any new rows */
     for (/* i == minrow */; i < row; i++) {
         term.dirty[i] = 1;
-        term.line[i] = xmalloc(col * sizeof(Glyph));
-        term.alt[i] = xmalloc(col * sizeof(Glyph));
+        term.line[i] = xmalloc(col * sizeof(Cell));
+        term.alt[i] = xmalloc(col * sizeof(Cell));
     }
     if (col > term.col) {
         bp = term.tabs + term.col;
@@ -1755,7 +1430,7 @@ int tresize(int col, int row) {
         memset(bp, 0, sizeof(*term.tabs) * (col - term.col));
         while (--bp > term.tabs && !*bp) {
             /* nothing */ }
-        for (bp += tabspaces; bp < term.tabs + col; bp += tabspaces) {
+        for (bp += term.tabspaces; bp < term.tabs + col; bp += term.tabspaces) {
             *bp = 1;
         }
     }
@@ -1781,156 +1456,9 @@ int tresize(int col, int row) {
     return (slide > 0);
 }
 
-#include "xcallback.h"
-#include "xdraw.h"
-#include "xinit.h"
-#include "xevent.h"
-
 void libsuckterm_set_size(int col, int row, int cw, int ch) {
     term.tw = MAX(1, col * cw);
     term.th = MAX(1, row * ch);
     tresize(col, row);
     ttyresize();
-}
-
-void xsetsize(int width, int height) {
-    int col, row;
-
-    if (width != 0) {
-        xw.w = width;
-    }
-    if (height != 0) {
-        xw.h = height;
-    }
-
-    col = (xw.w - 2 * borderpx) / xw.cw;
-    row = (xw.h - 2 * borderpx) / xw.ch;
-
-    libsuckterm_set_size(col, row, xw.cw, xw.ch);
-    xresize(col, row);
-}
-
-void run(void) {
-    XEvent ev;
-    int w = xw.w, h = xw.h;
-    fd_set rfd;
-    int xfd = XConnectionNumber(xw.dpy), xev, dodraw = 0;
-    struct timeval drawtimeout, * tv = NULL, now, last;
-
-    /* Waiting for window mapping */
-    while (1) {
-        XNextEvent(xw.dpy, &ev);
-        if (ev.type == ConfigureNotify) {
-            w = ev.xconfigure.width;
-            h = ev.xconfigure.height;
-        } else if (ev.type == MapNotify) {
-            break;
-        }
-    }
-
-    xsetsize(w, h);
-    cmdfd = ttynew(term.row, term.col, xw.win, opt_cmd, shell, termname);
-
-    gettimeofday(&last, NULL);
-
-    for (xev = actionfps; ;) {
-        FD_ZERO(&rfd);
-        FD_SET(cmdfd, &rfd);
-        FD_SET(xfd, &rfd);
-
-        if (select(MAX(xfd, cmdfd) + 1, &rfd, NULL, NULL, tv) < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            die("select failed: %s\n", SERRNO);
-        }
-        if (FD_ISSET(cmdfd, &rfd)) {
-            ttyread();
-        }
-
-        if (FD_ISSET(xfd, &rfd)) {
-            xev = actionfps;
-        }
-
-        gettimeofday(&now, NULL);
-        drawtimeout.tv_sec = 0;
-        drawtimeout.tv_usec = (1000 / xfps) * 1000;
-        tv = &drawtimeout;
-
-        dodraw = 0;
-        if (TIMEDIFF(now, last) \
- > (xev ? (1000 / xfps) : (1000 / actionfps))) {
-            dodraw = 1;
-            last = now;
-        }
-
-        if (dodraw) {
-            while (XPending(xw.dpy)) {
-                XNextEvent(xw.dpy, &ev);
-                if (XFilterEvent(&ev, None)) {
-                    continue;
-                }
-                if (handler[ev.type]) {
-                    (handler[ev.type])(&ev);
-                }
-            }
-
-            draw();
-            XFlush(xw.dpy);
-
-            if (xev && !FD_ISSET(xfd, &rfd)) {
-                xev--;
-            }
-            if (!FD_ISSET(cmdfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
-                tv = NULL;
-            }
-        }
-    }
-}
-
-void usage(void) {
-    die("%s " VERSION " (c) 2010-2013 st engineers\n" \
-    "usage: st [-a] [-v] [-c class] [-f font] [-g geometry] [-o file]" \
-    " [-t title] [-w windowid] [-e command ...]\n", argv0);
-}
-
-int main(int argc, char* argv[]) {
-    char* titles;
-
-    ARGBEGIN {
-                case 'c':
-                    opt_class = EARGF(usage());
-                    break;
-                case 'e':
-                    /* eat all remaining arguments */
-                    if (argc > 1) {
-                        opt_cmd = &argv[1];
-                        if (argv[1] != NULL && opt_title == NULL) {
-                            titles = strdup(argv[1]);
-                            opt_title = basename(titles);
-                        }
-                    }
-                    goto run;
-                case 'f':
-                    opt_font = EARGF(usage());
-                    break;
-                case 't':
-                    opt_title = EARGF(usage());
-                    break;
-                case 'w':
-                    opt_embed = EARGF(usage());
-                    break;
-                case 'v':
-                default:
-                    usage();
-            } ARGEND;
-
-    run:
-    setlocale(LC_CTYPE, "");
-    XSetLocaleModifiers("");
-    tnew(80, 24);
-    xinit();
-    run();
-
-    return 0;
 }

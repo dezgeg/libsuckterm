@@ -16,9 +16,6 @@ static char shell[] = "/bin/sh";
 float cwscale = 1.0;
 float chscale = 1.0;
 
-/* alt screens */
-static bool allowaltscreen = true;
-
 /* frames per second st should at maximum draw to the screen */
 static unsigned int xfps = 120;
 static unsigned int actionfps = 30;

@@ -10,6 +10,7 @@ pkg_check_modules(PC_X11 QUIET x11)
 pkg_check_modules(PC_XFT QUIET xft)
 
 set(SOURCE_FILES
+    libsuckterm.h
     st.c
     arg.h
     config.h
@@ -17,10 +18,7 @@ set(SOURCE_FILES
     helpers.c
     ptyutils.h
     ptyutils.c
-    xcallback.h
-    xdraw.h
-    xevent.h
-    xinit.h)
+    xgui.c)
 
 include_directories(${PC_FONTCONFIG_INCLUDE_DIRS})
 link_directories(${PC_FONTCONFIG_LIBRARY_DIRS})
