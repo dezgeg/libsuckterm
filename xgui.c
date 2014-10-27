@@ -1186,8 +1186,8 @@ void run(void) {
         }
     }
 
-    xsetsize(w, h);
     term_fd = libsuckterm_init(xw.win, opt_cmd, shell, termname);
+    xsetsize(w, h);
 
     gettimeofday(&last, NULL);
 
