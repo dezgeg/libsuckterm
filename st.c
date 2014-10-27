@@ -113,6 +113,7 @@ static void strhandle(void);
 static void strparse(void);
 static void strreset(void);
 
+static void move_row_contents(int y, int x_dst, int x_src, int count);
 static void tclearregion(int, int, int, int);
 static void tcursor(int);
 static void tdeletechar(int);
@@ -490,8 +491,7 @@ void tdeletechar(int n) {
         return;
     }
 
-    memmove(&term.line[term.c.y][dst], &term.line[term.c.y][src],
-            size * sizeof(Cell));
+    move_row_contents(term.c.y, dst, src, size);
     tclearregion(term.col - n, term.c.y, term.col - 1, term.c.y);
 }
 
@@ -507,8 +507,7 @@ void tinsertblank(int n) {
         return;
     }
 
-    memmove(&term.line[term.c.y][dst], &term.line[term.c.y][src],
-            size * sizeof(Cell));
+    move_row_contents(term.c.y, dst, src, size);
     tclearregion(src, term.c.y, dst - 1, term.c.y);
 }
 
@@ -759,19 +758,16 @@ void tsetmode(bool priv, bool set, int* args, int narg) {
                 case 2004: /* 2004: bracketed paste mode */
                     MODBIT(term.mode, set, MODE_BRCKTPASTE);
                     break;
+
                     /* Not implemented mouse modes. See comments there. */
-                case 1001: /* mouse highlight mode; can hang the
-				      terminal by design when implemented. */
-                case 1005: /* UTF-8 mouse mode; will confuse
-				      applications not supporting UTF-8
-				      and luit. */
-                case 1015: /* urxvt mangled mouse mode; incompatible
-				      and can be mistaken for other control
-				      codes. */
+                case 1001:
+                    /* mouse highlight mode; can hang the terminal by design when implemented. */
+                case 1005:
+                    /* UTF-8 mouse mode; will confuse applications not supporting UTF-8 and luit. */
+                case 1015:
+                    /* urxvt mangled mouse mode; incompatible and can be mistaken for other control codes. */
                 default:
-                    fprintf(stderr,
-                            "erresc: unknown private set/reset mode %d\n",
-                            *args);
+                    fprintf(stderr, "erresc: unknown private set/reset mode %d\n", *args);
                     break;
             }
         } else {
@@ -1116,6 +1112,10 @@ void tselcs(void) {
     }
 }
 
+void move_row_contents(int y, int x_dst, int x_src, int count) {
+    memmove(&term.line[y][x_dst], &term.line[y][x_src], count * sizeof(Cell));
+}
+
 void tputc(char* c, int len) {
     uchar ascii = *c;
     bool control = ascii < '\x20' || ascii == 0177;
@@ -1216,9 +1216,7 @@ void tputc(char* c, int len) {
     } else if (term.esc & ESC_START) {
         if (term.esc & ESC_CSI) {
             csiescseq.buf[csiescseq.len++] = ascii;
-            if (BETWEEN(ascii, 0x40, 0x7E)
-                    || csiescseq.len >= \
-                    sizeof(csiescseq.buf) - 1) {
+            if (BETWEEN(ascii, 0x40, 0x7E) || csiescseq.len >= sizeof(csiescseq.buf) - 1) {
                 term.esc = 0;
                 csiparse();
                 csihandle();
@@ -1345,9 +1343,7 @@ void tputc(char* c, int len) {
     }
 
     if (IS_SET(MODE_INSERT) && term.c.x + 1 < term.col) {
-        memmove(&term.line[term.c.y][term.c.x + 1],
-                &term.line[term.c.y][term.c.x],
-                (term.col - term.c.x - 1) * sizeof(Cell));
+        move_row_contents(term.c.y, term.c.x + 1, term.c.x, term.col - term.c.x - 1);
     }
 
     if (term.c.x + width > term.col) {
@@ -1537,12 +1533,10 @@ void libsuckterm_notify_mouse_event(enum libsuckterm_mouse_event event,
     }
 
     if (IS_SET(MODE_MOUSESGR)) {
-        len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c",
-                button_code, x + 1, y + 1,
+        len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c", button_code, x + 1, y + 1,
                 event == LIBSUCKTERM_MOUSE_RELEASED ? 'm' : 'M');
     } else if (x < 223 && y < 223) {
-        len = snprintf(buf, sizeof(buf), "\033[M%c%c%c",
-                32 + button_code, 32 + x + 1, 32 + y + 1);
+        len = snprintf(buf, sizeof(buf), "\033[M%c%c%c", 32 + button_code, 32 + x + 1, 32 + y + 1);
     } else {
         return;
     }
