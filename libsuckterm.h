@@ -110,6 +110,18 @@ extern int cmdfd;
 #define TIMEDIFF(t1, t2) ((t1.tv_sec-t2.tv_sec)*1000 + (t1.tv_usec-t2.tv_usec)/1000)
 #define CEIL(x) (((x) != (int) (x)) ? (x) + 1 : (x))
 
+enum libsuckterm_modifier {
+    LIBSUCKTERM_MODIFIER_SHIFT = 4,
+    LIBSUCKTERM_MODIFIER_META = 8,
+    LIBSUCKTERM_MODIFIER_CONTROL = 16,
+};
+
+enum libsuckterm_mouse_event {
+    LIBSUCKTERM_MOUSE_PRESSED,
+    LIBSUCKTERM_MOUSE_RELEASED,
+    LIBSUCKTERM_MOUSE_MOTION,
+};
+
 void libsuckterm_cb_bell(void);
 void libsuckterm_cb_reset_title(void);
 void libsuckterm_cb_reset_colors(void);
@@ -123,6 +135,8 @@ int libsuckterm_cb_set_color(int x, const char* name);
 void libsuckterm_notify_focus(bool in);
 void libsuckterm_notify_set_size(int col, int row, int cw, int ch);
 void libsuckterm_notify_exit(void);
+void libsuckterm_notify_mouse_event(enum libsuckterm_mouse_event event,
+        int x, int y, unsigned mods, int button_index);
 
 static inline int libsuckterm_get_cols() { return term.col; }
 static inline int libsuckterm_get_rows() { return term.row; }

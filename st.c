@@ -20,13 +20,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <X11/Xatom.h>
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/cursorfont.h>
-#include <X11/keysym.h>
-#include <X11/Xft/Xft.h>
-#include <fontconfig/fontconfig.h>
 #include <wchar.h>
 
 #include "helpers.h"
@@ -50,7 +43,6 @@ char* argv0;
 #define ESC_ARG_SIZ   16
 #define STR_BUF_SIZ   ESC_BUF_SIZ
 #define STR_ARG_SIZ   ESC_ARG_SIZ
-
 
 /* macros */
 #define VT102ID "\033[?6c"
@@ -80,9 +72,9 @@ enum escape_state {
     ESC_START = 1,
     ESC_CSI = 2,
     ESC_STR = 4, /* DSC, OSC, PM, APC */
-            ESC_ALTCHARSET = 8,
+    ESC_ALTCHARSET = 8,
     ESC_STR_END = 16, /* a final string was encountered */
-            ESC_TEST = 32, /* Enter in test mode */
+    ESC_TEST = 32, /* Enter in test mode */
 };
 
 /* CSI Escape sequence structs */
@@ -1476,4 +1468,73 @@ void libsuckterm_notify_focus(bool in) {
             ttywrite("\033[O", 3);
         }
     }
+}
+
+static int oldbutton = 3;
+void libsuckterm_notify_mouse_event(enum libsuckterm_mouse_event event,
+        int x, int y, unsigned mods, int button_index) {
+    char buf[40];
+    static int ox, oy;
+    int len;
+    unsigned button_code;
+
+    if (!IS_SET(MODE_MOUSE)) {
+        return;
+    }
+
+    /* from urxvt */
+    if (event == LIBSUCKTERM_MOUSE_MOTION) {
+        if (x == ox && y == oy) {
+            return;
+        }
+        if (!IS_SET(MODE_MOUSEMOTION) && !IS_SET(MODE_MOUSEMANY)) {
+            return;
+        }
+        /* MOUSE_MOTION: no reporting if no button is pressed */
+        if (IS_SET(MODE_MOUSEMOTION) && oldbutton == 3) {
+            return;
+        }
+
+        button_code = oldbutton + 32;
+        ox = x;
+        oy = y;
+    } else {
+        if (!IS_SET(MODE_MOUSESGR) && event == LIBSUCKTERM_MOUSE_RELEASED) {
+            button_code = 3;
+        } else {
+            if (button_index >= 3) {
+                button_code = button_index + 64 - 3;
+            } else {
+                button_code = button_index;
+            }
+        }
+        if (event == LIBSUCKTERM_MOUSE_PRESSED) {
+            oldbutton = button_code;
+            ox = x;
+            oy = y;
+        } else if (event == LIBSUCKTERM_MOUSE_RELEASED) {
+            oldbutton = 3;
+            /* MODE_MOUSEX10: no button release reporting */
+            if (IS_SET(MODE_MOUSEX10)) {
+                return;
+            }
+        }
+    }
+
+    if (!IS_SET(MODE_MOUSEX10)) {
+        button_code += mods;
+    }
+
+    if (IS_SET(MODE_MOUSESGR)) {
+        len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c",
+                button_code, x + 1, y + 1,
+                event == LIBSUCKTERM_MOUSE_RELEASED ? 'm' : 'M');
+    } else if (x < 223 && y < 223) {
+        len = snprintf(buf, sizeof(buf), "\033[M%c%c%c",
+                32 + button_code, 32 + x + 1, 32 + y + 1);
+    } else {
+        return;
+    }
+
+    ttywrite(buf, len);
 }
