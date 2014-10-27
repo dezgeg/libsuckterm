@@ -111,7 +111,6 @@ static void csiparse(void);
 static void csireset(void);
 static void strhandle(void);
 static void strparse(void);
-static void strreset(void);
 
 static void move_row_contents(int y, int x_dst, int x_src, int count);
 static void tclearregion(int, int, int, int);
@@ -259,6 +258,7 @@ void tsetdirt(int top, int bot) {
     }
 }
 
+/* Marks all lines as dirty */
 void tfulldirt(void) {
     tsetdirt(0, term.row - 1);
 }
@@ -320,6 +320,7 @@ void tswapscreen(void) {
     tfulldirt();
 }
 
+/* Scrolls screen lines below @orig down @n lines, creating empty lines near @orig. */
 void tscrolldown(int orig, int n) {
     int i;
     Line temp;
@@ -338,6 +339,7 @@ void tscrolldown(int orig, int n) {
     }
 }
 
+/* Scrolls screen lines below @orig up @n lines, creating empty lines at the bottom. */
 void tscrollup(int orig, int n) {
     int i;
     Line temp;
@@ -397,11 +399,12 @@ void csiparse(void) {
     csiescseq.mode = *p;
 }
 
-/* for absolute user moves, when decom is set */
+/* Moves the cursor to a position relative to the scroll region */
 void tmoveato(int x, int y) {
     tmoveto(x, y + ((term.c.state & CURSOR_ORIGIN) ? term.top : 0));
 }
 
+/* Moves the cursor to an absolute screen position */
 void tmoveto(int x, int y) {
     int miny, maxy;
 
@@ -419,6 +422,7 @@ void tmoveto(int x, int y) {
     term.c.y = y;
 }
 
+/* Puts an UTF8-encoded character @c with attributes @attr to position @x, @y */
 void tsetchar(char* c, Cell* attr, int x, int y) {
     static char* vt100_0[62] = { /* 0x41 - 0x7e */
             "↑", "↓", "→", "←", "█", "▚", "☃", /* A - G */
@@ -479,6 +483,10 @@ void tclearregion(int x1, int y1, int x2, int y2) {
     }
 }
 
+/*
+   Deletes @n characters at the current cursor position,
+   moving rest of the characters on that line to the left.
+ */
 void tdeletechar(int n) {
     int src = term.c.x + n;
     int dst = term.c.x;
@@ -1040,10 +1048,6 @@ void strparse(void) {
     }
 }
 
-void strreset(void) {
-    memset(&strescseq, 0, sizeof(strescseq));
-}
-
 void tputtab(bool forward) {
     uint x = term.c.x;
 
@@ -1255,7 +1259,7 @@ void tputc(char* c, int len) {
                 case '^': /* PM -- Privacy Message */
                 case ']': /* OSC -- Operating System Command */
                 case 'k': /* old title set compatibility */
-                    strreset();
+                    memset(&strescseq, 0, sizeof(strescseq));
                     strescseq.type = ascii;
                     term.esc |= ESC_STR;
                     break;
