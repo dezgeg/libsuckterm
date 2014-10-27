@@ -54,8 +54,8 @@ enum cursor_movement {
 
 enum cursor_state {
     CURSOR_DEFAULT = 0,
-    CURSOR_WRAPNEXT = 1,
-    CURSOR_ORIGIN = 2
+    CURSOR_WRAPNEXT = 1, /* Next character entered wraps to next line */
+            CURSOR_ORIGIN = 2, /* Cursor is limited to be inside scroll region */
 };
 
 enum charset {
@@ -72,9 +72,9 @@ enum escape_state {
     ESC_START = 1,
     ESC_CSI = 2,
     ESC_STR = 4, /* DSC, OSC, PM, APC */
-    ESC_ALTCHARSET = 8,
+            ESC_ALTCHARSET = 8,
     ESC_STR_END = 16, /* a final string was encountered */
-    ESC_TEST = 32, /* Enter in test mode */
+            ESC_TEST = 32, /* Enter in test mode */
 };
 
 /* CSI Escape sequence structs */
@@ -142,8 +142,7 @@ static void tdeftran(char);
 Term term;
 static CSIEscape csiescseq;
 static STREscape strescseq;
-int cmdfd;
-/* button event on startup: 3 = release */
+static int cmdfd;
 
 static void csidump(void) {
     int i;
@@ -247,6 +246,7 @@ void ttyresize(void) {
     }
 }
 
+/* Marks lines [top..bot] as dirty */
 void tsetdirt(int top, int bot) {
     int i;
 
@@ -262,6 +262,7 @@ void tfulldirt(void) {
     tsetdirt(0, term.row - 1);
 }
 
+/* Loads or saves the VT100 saved cursor */
 void tcursor(int mode) {
     static TCursor c[2];
     bool alt = IS_SET(MODE_ALTSCREEN);
@@ -353,6 +354,7 @@ void tscrollup(int orig, int n) {
     }
 }
 
+/* Moves cursor to the next line, creating a new blank line at the bottom if necessary */
 void tnewline(int first_col) {
     int y = term.c.y;
 
@@ -432,8 +434,7 @@ void tsetchar(char* c, Cell* attr, int x, int y) {
      * The table is proudly stolen from rxvt.
      */
     if (attr->mode & ATTR_GFX) {
-        if (c[0] >= 0x41 && c[0] <= 0x7e
-                && vt100_0[c[0] - 0x41]) {
+        if (c[0] >= 0x41 && c[0] <= 0x7e && vt100_0[c[0] - 0x41]) {
             c = vt100_0[c[0] - 0x41];
         }
     }
@@ -655,6 +656,10 @@ void tsetattr(int* attr, int l) {
     }
 }
 
+/*
+ Sets scroll region. Only lines inside the scroll region will scroll.
+ Also, if DECOM is set, cursor can't go outside scroll region.
+ */
 void tsetscroll(int t, int b) {
     int temp;
 
@@ -1448,6 +1453,11 @@ int tresize(int col, int row) {
     return (slide > 0);
 }
 
+int libsuckterm_init(unsigned winid, char** opt_cmd, char* shell, char* termname) {
+    cmdfd = ttynew(libsuckterm_get_rows(), libsuckterm_get_cols(), winid, opt_cmd, shell, termname);
+    return cmdfd;
+}
+
 void libsuckterm_notify_set_size(int col, int row, int cw, int ch) {
     term.tw = MAX(1, col * cw);
     term.th = MAX(1, row * ch);
@@ -1470,6 +1480,7 @@ void libsuckterm_notify_focus(bool in) {
     }
 }
 
+/* button event on startup: 3 = release */
 static int oldbutton = 3;
 void libsuckterm_notify_mouse_event(enum libsuckterm_mouse_event event,
         int x, int y, unsigned mods, int button_index) {

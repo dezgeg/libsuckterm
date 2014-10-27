@@ -1170,6 +1170,7 @@ void xseturgent(int add) {
 void run(void) {
     XEvent ev;
     int w = xw.w, h = xw.h;
+    int term_fd;
     fd_set rfd;
     int xfd = XConnectionNumber(xw.dpy), xev, dodraw = 0;
     struct timeval drawtimeout, * tv = NULL, now, last;
@@ -1186,22 +1187,22 @@ void run(void) {
     }
 
     xsetsize(w, h);
-    cmdfd = ttynew(libsuckterm_get_rows(), libsuckterm_get_cols(), xw.win, opt_cmd, shell, termname);
+    term_fd = libsuckterm_init(xw.win, opt_cmd, shell, termname);
 
     gettimeofday(&last, NULL);
 
     for (xev = actionfps; ;) {
         FD_ZERO(&rfd);
-        FD_SET(cmdfd, &rfd);
+        FD_SET(term_fd, &rfd);
         FD_SET(xfd, &rfd);
 
-        if (select(MAX(xfd, cmdfd) + 1, &rfd, NULL, NULL, tv) < 0) {
+        if (select(MAX(xfd, term_fd) + 1, &rfd, NULL, NULL, tv) < 0) {
             if (errno == EINTR) {
                 continue;
             }
             die("select failed: %s\n", SERRNO);
         }
-        if (FD_ISSET(cmdfd, &rfd)) {
+        if (FD_ISSET(term_fd, &rfd)) {
             ttyread();
         }
 
@@ -1237,7 +1238,7 @@ void run(void) {
             if (xev && !FD_ISSET(xfd, &rfd)) {
                 xev--;
             }
-            if (!FD_ISSET(cmdfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
+            if (!FD_ISSET(term_fd, &rfd) && !FD_ISSET(xfd, &rfd)) {
                 tv = NULL;
             }
         }

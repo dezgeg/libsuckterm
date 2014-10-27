@@ -66,9 +66,9 @@ enum term_mode {
 /* Internal representation of the screen */
 typedef struct {
     int row;
-    /* nb row */
+    /* number of rows */
     int col;
-    /* nb col */
+    /* number of columns */
     int tw, th;
     /* tty width and height in pixels, for TIOCSWINSZ */
     Line* line;
@@ -92,12 +92,12 @@ typedef struct {
     /* current charset */
     int icharset; /* selected charset for sequence */
     bool* tabs;
+
     /* user default settings */
     unsigned int defaultfg, defaultbg;
     unsigned tabspaces;
 } Term;
 extern Term term;
-extern int cmdfd;
 
 #define TRUECOLOR(r, g, b) (1 << 24 | (r) << 16 | (g) << 8 | (b))
 #define IS_TRUECOL(x)    (1 << 24 & (x))
@@ -138,6 +138,7 @@ void libsuckterm_notify_exit(void);
 void libsuckterm_notify_mouse_event(enum libsuckterm_mouse_event event,
         int x, int y, unsigned mods, int button_index);
 
+int libsuckterm_init(unsigned winid, char** cmd, char* shell, char* termname);
 static inline int libsuckterm_get_cols() { return term.col; }
 static inline int libsuckterm_get_rows() { return term.row; }
 static inline int libsuckterm_get_cursor_x() { return term.c.x; }
