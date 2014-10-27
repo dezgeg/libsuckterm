@@ -120,7 +120,8 @@ void libsuckterm_cb_set_title(char*);
 void libsuckterm_cb_set_urgency(int);
 int libsuckterm_cb_set_color(int x, const char* name);
 
-void libsuckterm_set_size(int col, int row, int cw, int ch);
+void libsuckterm_notify_set_size(int col, int row, int cw, int ch);
+void libsuckterm_notify_exit(void);
 
 static inline int libsuckterm_get_cols() { return term.col; }
 static inline int libsuckterm_get_rows() { return term.row; }

@@ -7,7 +7,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-pid_t pid;
+pid_t child_pid;
 
 void execsh(unsigned long windowid, char** cmd, char* shell, char* termname) {
     char** args;
@@ -46,8 +46,8 @@ void execsh(unsigned long windowid, char** cmd, char* shell, char* termname) {
 void sigchld(int a) {
     int st = 0;
 
-    if (waitpid(pid, &st, 0) < 0) {
-        die("Waiting for pid %hd failed: %s\n", pid, SERRNO);
+    if (waitpid(child_pid, &st, 0) < 0) {
+        die("Waiting for pid %hd failed: %s\n", child_pid, SERRNO);
     }
 
     if (WIFEXITED(st)) {
@@ -66,7 +66,7 @@ int ttynew(unsigned short row, unsigned short col, unsigned long windowid, char*
         die("openpty failed: %s\n", SERRNO);
     }
 
-    switch (pid = fork()) {
+    switch (child_pid = fork()) {
         case -1:
             die("fork failed\n");
             break;

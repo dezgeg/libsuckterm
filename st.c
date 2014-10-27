@@ -1456,9 +1456,14 @@ int tresize(int col, int row) {
     return (slide > 0);
 }
 
-void libsuckterm_set_size(int col, int row, int cw, int ch) {
+void libsuckterm_notify_set_size(int col, int row, int cw, int ch) {
     term.tw = MAX(1, col * cw);
     term.th = MAX(1, row * ch);
     tresize(col, row);
     ttyresize();
+}
+
+void libsuckterm_notify_exit(void) {
+    /* Send SIGHUP to shell */
+    kill(child_pid, SIGHUP);
 }

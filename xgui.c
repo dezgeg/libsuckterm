@@ -29,7 +29,7 @@ void xclear(int x1, int y1, int x2, int y2);
 void draw(void);
 void drawregion(int x1, int y1, int x2, int y2);
 void xsetsize(int width, int height);
-void xloadcols(void) ;
+void xloadcols(void);
 
 static void expose(XEvent*);
 static void visibility(XEvent*);
@@ -218,6 +218,10 @@ void mousereport(XEvent* e) {
     char buf[40];
     static int ox, oy;
 
+    if (!IS_SET(MODE_MOUSE)) {
+        return;
+    }
+
     /* from urxvt */
     if (e->xbutton.type == MotionNotify) {
         if (x == ox && y == oy) {
@@ -352,15 +356,17 @@ int libsuckterm_cb_set_color(int x, const char* name) {
             color.green = sixd_to_16bit(g);
             color.blue = sixd_to_16bit(b);
             if (!XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &color, &colour)) {
+                /* something went wrong */
                 return 0;
-            } /* something went wrong */
+            }
             dc.col[x] = colour;
             return 1;
         } else if (16 + 216 <= x && x < 256) {
             color.red = color.green = color.blue = 0x0808 + 0x0a0a * (x - (16 + 216));
             if (!XftColorAllocValue(xw.dpy, xw.vis, xw.cmap, &color, &colour)) {
+                /* something went wrong */
                 return 0;
-            } /* something went wrong */
+            }
             dc.col[x] = colour;
             return 1;
         } else {
@@ -570,11 +576,8 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
                 }
 
                 if (u8fl > 0) {
-                    XftDrawStringUtf8(xw.draw, fg,
-                            font->match, xp,
-                            winy + font->ascent,
-                            (FcChar8*)u8fs,
-                            u8fblen);
+                    XftDrawStringUtf8(xw.draw, fg, font->match,
+                            xp, winy + font->ascent, (FcChar8*)u8fs, u8fblen);
                     xp += xw.cw * u8fl;
 
                 }
@@ -593,8 +596,7 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
 
         /* Search the font cache. */
         for (i = 0; i < frclen; i++) {
-            if (XftCharExists(xw.dpy, frc[i].font, u8char)
-                    && frc[i].flags == frcflags) {
+            if (XftCharExists(xw.dpy, frc[i].font, u8char) && frc[i].flags == frcflags) {
                 break;
             }
         }
@@ -615,17 +617,13 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
             fccharset = FcCharSetCreate();
 
             FcCharSetAddChar(fccharset, u8char);
-            FcPatternAddCharSet(fcpattern, FC_CHARSET,
-                    fccharset);
-            FcPatternAddBool(fcpattern, FC_SCALABLE,
-                    FcTrue);
+            FcPatternAddCharSet(fcpattern, FC_CHARSET, fccharset);
+            FcPatternAddBool(fcpattern, FC_SCALABLE, FcTrue);
 
-            FcConfigSubstitute(0, fcpattern,
-                    FcMatchPattern);
+            FcConfigSubstitute(0, fcpattern, FcMatchPattern);
             FcDefaultSubstitute(fcpattern);
 
-            fontpattern = FcFontSetMatch(0, fcsets,
-                    FcTrue, fcpattern, &fcres);
+            fontpattern = FcFontSetMatch(0, fcsets, FcTrue, fcpattern, &fcres);
 
             /*
              * Overwrite or create the new cache entry.
@@ -635,8 +633,7 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
                 XftFontClose(xw.dpy, frc[frclen].font);
             }
 
-            frc[frclen].font = XftFontOpenPattern(xw.dpy,
-                    fontpattern);
+            frc[frclen].font = XftFontOpenPattern(xw.dpy, fontpattern);
             frc[frclen].flags = frcflags;
 
             i = frclen;
@@ -647,8 +644,7 @@ void xdraws(char* s, Cell base, int x, int y, int charlen, int bytelen) {
         }
 
         XftDrawStringUtf8(xw.draw, fg, frc[i].font,
-                xp, winy + frc[i].font->ascent,
-                (FcChar8*)u8c, u8cblen);
+                xp, winy + frc[i].font->ascent, (FcChar8*)u8c, u8cblen);
 
         xp += xw.cw * wcwidth(u8char);
     }
@@ -740,11 +736,8 @@ void redraw(int timeout) {
 
 void draw(void) {
     drawregion(0, 0, libsuckterm_get_cols(), libsuckterm_get_rows());
-    XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, xw.w,
-            xw.h, 0, 0);
-    XSetForeground(xw.dpy, dc.gc,
-            dc.col[reverse_video ?
-                    defaultfg : defaultbg].pixel);
+    XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, xw.w, xw.h, 0, 0);
+    XSetForeground(xw.dpy, dc.gc, dc.col[reverse_video ? defaultfg : defaultbg].pixel);
 }
 
 void drawregion(int x1, int y1, int x2, int y2) {
@@ -968,16 +961,13 @@ void xinit(void) {
         XSetLocaleModifiers("@im=local");
         if ((xw.xim = XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
             XSetLocaleModifiers("@im=");
-            if ((xw.xim = XOpenIM(xw.dpy,
-                    NULL, NULL, NULL)) == NULL) {
-                die("XOpenIM failed. Could not open input"
-                        " device.\n");
+            if ((xw.xim = XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
+                die("XOpenIM failed. Could not open input device.\n");
             }
         }
     }
-    xw.xic = XCreateIC(xw.xim, XNInputStyle, XIMPreeditNothing
-            | XIMStatusNothing, XNClientWindow, xw.win,
-            XNFocusWindow, xw.win, NULL);
+    xw.xic = XCreateIC(xw.xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+            XNClientWindow, xw.win, XNFocusWindow, xw.win, NULL);
     if (xw.xic == NULL) {
         die("XCreateIC failed. Could not obtain input method.\n");
     }
@@ -1134,8 +1124,7 @@ void cmessage(XEvent* e) {
             xw.state &= ~WIN_FOCUSED;
         }
     } else if (e->xclient.data.l[0] == xw.wmdeletewin) {
-        /* Send SIGHUP to shell */
-        kill(pid, SIGHUP);
+        libsuckterm_notify_exit();
         exit(EXIT_SUCCESS);
     }
 }
@@ -1198,21 +1187,15 @@ void focus(XEvent* ev) {
 }
 
 void bpress(XEvent* e) {
-    if (IS_SET(MODE_MOUSE)) {
-        mousereport(e);
-    }
+    mousereport(e);
 }
 
 void brelease(XEvent* e) {
-    if (IS_SET(MODE_MOUSE)) {
-        mousereport(e);
-    }
+    mousereport(e);
 }
 
 void bmotion(XEvent* e) {
-    if (IS_SET(MODE_MOUSE)) {
-        mousereport(e);
-    }
+    mousereport(e);
 }
 
 void xsetsize(int width, int height) {
@@ -1228,7 +1211,7 @@ void xsetsize(int width, int height) {
     col = (xw.w - 2 * borderpx) / xw.cw;
     row = (xw.h - 2 * borderpx) / xw.ch;
 
-    libsuckterm_set_size(col, row, xw.cw, xw.ch);
+    libsuckterm_notify_set_size(col, row, xw.cw, xw.ch);
     xresize(col, row);
 }
 
