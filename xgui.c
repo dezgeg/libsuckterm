@@ -30,6 +30,7 @@ void draw(void);
 void drawregion(int x1, int y1, int x2, int y2);
 void xsetsize(int width, int height);
 void xloadcols(void);
+void xseturgent(int add);
 
 static void expose(XEvent*);
 static void visibility(XEvent*);
@@ -125,7 +126,7 @@ bool reverse_video = false;
 
 void libsuckterm_cb_bell(void) {
     if (!(xw.state & WIN_FOCUSED)) {
-        libsuckterm_cb_set_urgency(1);
+        xseturgent(1);
     }
     if (bellvolume) {
         XBell(xw.dpy, bellvolume);
@@ -167,12 +168,9 @@ void libsuckterm_cb_set_pointer_motion(int set) {
     XChangeWindowAttributes(xw.dpy, xw.win, CWEventMask, &xw.attrs);
 }
 
+// XXX: not used?
 void libsuckterm_cb_set_urgency(int add) {
-    XWMHints* h = XGetWMHints(xw.dpy, xw.win);
-
-    h->flags = add ? (h->flags | XUrgencyHint) : (h->flags & ~XUrgencyHint);
-    XSetWMHints(xw.dpy, xw.win, h);
-    XFree(h);
+    xseturgent(add);
 }
 
 /* DRAWING STUFF */
@@ -1119,7 +1117,7 @@ void cmessage(XEvent* e) {
     if (e->xclient.message_type == xw.xembed && e->xclient.format == 32) {
         if (e->xclient.data.l[1] == XEMBED_FOCUS_IN) {
             xw.state |= WIN_FOCUSED;
-            libsuckterm_cb_set_urgency(0);
+            xseturgent(0);
         } else if (e->xclient.data.l[1] == XEMBED_FOCUS_OUT) {
             xw.state &= ~WIN_FOCUSED;
         }
@@ -1173,16 +1171,12 @@ void focus(XEvent* ev) {
     if (ev->type == FocusIn) {
         XSetICFocus(xw.xic);
         xw.state |= WIN_FOCUSED;
-        libsuckterm_cb_set_urgency(0);
-        if (IS_SET(MODE_FOCUS)) {
-            ttywrite("\033[I", 3);
-        }
+        xseturgent(0);
+        libsuckterm_notify_focus(true);
     } else {
         XUnsetICFocus(xw.xic);
         xw.state &= ~WIN_FOCUSED;
-        if (IS_SET(MODE_FOCUS)) {
-            ttywrite("\033[O", 3);
-        }
+        libsuckterm_notify_focus(false);
     }
 }
 
@@ -1213,6 +1207,14 @@ void xsetsize(int width, int height) {
 
     libsuckterm_notify_set_size(col, row, xw.cw, xw.ch);
     xresize(col, row);
+}
+
+void xseturgent(int add) {
+    XWMHints* h = XGetWMHints(xw.dpy, xw.win);
+
+    h->flags = add ? (h->flags | XUrgencyHint) : (h->flags & ~XUrgencyHint);
+    XSetWMHints(xw.dpy, xw.win, h);
+    XFree(h);
 }
 
 void run(void) {

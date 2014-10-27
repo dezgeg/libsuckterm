@@ -1467,3 +1467,13 @@ void libsuckterm_notify_exit(void) {
     /* Send SIGHUP to shell */
     kill(child_pid, SIGHUP);
 }
+
+void libsuckterm_notify_focus(bool in) {
+    if (IS_SET(MODE_FOCUS)) {
+        if (in) {
+            ttywrite("\033[I", 3);
+        } else {
+            ttywrite("\033[O", 3);
+        }
+    }
+}

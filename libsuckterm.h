@@ -120,6 +120,7 @@ void libsuckterm_cb_set_title(char*);
 void libsuckterm_cb_set_urgency(int);
 int libsuckterm_cb_set_color(int x, const char* name);
 
+void libsuckterm_notify_focus(bool in);
 void libsuckterm_notify_set_size(int col, int row, int cw, int ch);
 void libsuckterm_notify_exit(void);
 
